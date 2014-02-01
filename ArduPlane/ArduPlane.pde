@@ -1182,11 +1182,23 @@ static void update_flight_mode(void)
     switch (effective_mode) 
     {
     case AUTO:
+			// Test for switch into thermalling mode
+			new_mode = thermal(control_mode);
+            if (new_mode != control_mode) {
+              //set_mode(new_mode);  //rather than use set_mode, do operations here to allow the waypoint to be setup in thermal()
+              control_mode = new_mode;
+              crash_timer = 0;
+            }
         handle_auto_mode();
         break;
 
     case RTL:
     case LOITER:
+		// Update filter or switch back to AUTO
+		new_mode = cruise(control_mode);
+        if (new_mode != control_mode) {
+            set_mode(new_mode);
+         }
     case GUIDED:
         calc_nav_roll();
         calc_nav_pitch();

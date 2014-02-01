@@ -1,0 +1,21 @@
+# For MatrixMath Library
+# Created by Charlie Matlack on 12/18/10.
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+MatrixMath		KEYWORD1
+
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+MatrixPrint		KEYWORD2
+MatrixCopy		KEYWORD2
+MatrixMult		KEYWORD2
+MatrixAdd		KEYWORD2
+MatrixSubtract	KEYWORD2
+MatrixTranspose	KEYWORD2
+MatrixInvert	KEYWORD2

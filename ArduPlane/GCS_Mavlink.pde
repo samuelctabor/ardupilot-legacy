@@ -2142,7 +2142,10 @@ mission_failed:
 
         barometer.setHIL(packet.alt*0.001f);
         compass.setHIL(packet.roll, packet.pitch, packet.yaw);
-        airspeed.disable();
+        //airspeed.disable();
+		if (airspeed.enabled()) {
+          airspeed.set_HIL(vel/100.0);
+        }
 
         // cope with DCM getting badly off due to HIL lag
         if (g.hil_err_limit > 0 &&
