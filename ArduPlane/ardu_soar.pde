@@ -37,7 +37,7 @@ float p[N][N] = {{INITIAL_STRENGTH_COVARIANCE, 0,                         0,    
 
 ExtendedKalmanFilter ekf;  
 
-static FlightMode new_mode;
+
 
  // Keep track of the previous flight mode so we can transition back
  // When we come out of thermal mode.
@@ -92,7 +92,7 @@ static FlightMode new_mode;
        // Also reset covariance matrix p so filter is not affected by previous data       
        ekf.reset(xr,p,q,r);
        
-       location_offset(&next_WP, ekf.X[2], ekf.X[3]); //place waypoint to reflect filter state
+       location_offset(next_WP, ekf.X[2], ekf.X[3]); //place waypoint to reflect filter state
        last_alt = barometer.get_altitude();  // So that the first delta is not nonsense
        prev_update_location = current_loc;                                // save for next time
        prev_update_time = millis();
@@ -167,7 +167,7 @@ static FlightMode new_mode;
        ekf.update(netto_rate,dx, dy);                              // update the filter
        
        next_WP = current_loc; // as filter estimate is based on offset from current location
-       location_offset(&next_WP, ekf.X[2], ekf.X[3]); //update the WP
+       location_offset(next_WP, ekf.X[2], ekf.X[3]); //update the WP
        
        prev_update_location = current_loc;      // save for next time
        prev_update_time = millis();

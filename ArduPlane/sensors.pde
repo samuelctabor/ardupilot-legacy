@@ -103,3 +103,19 @@ static int32_t adjusted_altitude_cm(void)
     return current_loc.alt - (g.alt_offset*100);
 }
 
+
+/* 
+  Convienience method primarily to support 
+  the soaring module
+*/
+static float read_climb_rate() {
+  
+#if HIL_MODE != HIL_MODE_ATTITUDE
+  // in HIL, this is done when new data is received, to avoid putting too many identical baro readings into climb rate filter
+  barometer.read();
+  barometer.get_altitude();
+#endif
+  
+  return barometer.get_climb_rate();
+}
+
