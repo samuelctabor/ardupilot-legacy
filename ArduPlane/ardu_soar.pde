@@ -140,8 +140,8 @@ ExtendedKalmanFilter ekf;
      else {
        // still in thermal - need to update the wp location and update the filter according to new measurement
 
-       float dx = get_offset_north(&prev_update_location, &current_loc);  // get distances from previous update
-       float dy = get_offset_east(&prev_update_location, &current_loc);
+       float dx = get_offset_north(prev_update_location, current_loc);  // get distances from previous update
+       float dy = get_offset_east(prev_update_location, current_loc);
        
        if (0) {
          // Wind correction currently unused
