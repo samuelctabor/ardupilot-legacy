@@ -26,13 +26,13 @@ void crash_check()
     }
 
     // return immediately if we are not in an angle stabilize flight mode or we are flipping
-    if (control_mode == ACRO || ap.do_flip) {
+    if (control_mode == ACRO || control_mode == FLIP) {
         inverted_count = 0;
         return;
     }
 
     // check angles
-    int32_t lean_max = g.angle_max + CRASH_CHECK_ANGLE_DEVIATION_CD;
+    int32_t lean_max = aparm.angle_max + CRASH_CHECK_ANGLE_DEVIATION_CD;
     if (labs(ahrs.roll_sensor) > lean_max || labs(ahrs.pitch_sensor) > lean_max) {
         inverted_count++;
 

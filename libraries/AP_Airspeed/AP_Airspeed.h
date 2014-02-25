@@ -88,7 +88,7 @@ public:
 
     // return true if airspeed is enabled, and airspeed use is set
     bool        use(void) const {
-        return _enable && _use && _offset > 0 && _healthy;
+        return _enable && _use && fabsf(_offset) > 0 && _healthy;
     }
 
     // return true if airspeed is enabled
@@ -131,8 +131,16 @@ public:
     // return health status of sensor
     bool healthy(void) const { return _healthy; }
 
+    // return time in ms of last update
+    uint32_t last_update_ms(void) const { return _last_update_ms; }
+
+    void setHIL(float airspeed, float diff_pressure, float temperature);
+
     static const struct AP_Param::GroupInfo var_info[];
 
+    enum pitot_tube_order { PITOT_TUBE_ORDER_POSITIVE =0, 
+                            PITOT_TUBE_ORDER_NEGATIVE =1, 
+                            PITOT_TUBE_ORDER_AUTO     =2};
 
 private:
     AP_Float        _offset;
@@ -141,11 +149,13 @@ private:
     AP_Int8         _enable;
     AP_Int8         _pin;
     AP_Int8         _autocal;
+    AP_Int8         _tube_order;
     float           _raw_airspeed;
     float           _airspeed;
     float			_last_pressure;
     float           _EAS2TAS;
     bool		    _healthy;
+    uint32_t        _last_update_ms;
 
     Airspeed_Calibration _calibration;
     float _last_saved_ratio;

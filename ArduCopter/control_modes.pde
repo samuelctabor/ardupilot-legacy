@@ -109,6 +109,7 @@ static void init_aux_switches()
         case AUX_SWITCH_ACRO_TRAINER:
         case AUX_SWITCH_EPM:
         case AUX_SWITCH_SPRAYER:
+        case AUX_SWITCH_EKF:
             do_aux_switch_function(g.ch7_option, ap.CH7_flag);
             break;
     }
@@ -122,6 +123,7 @@ static void init_aux_switches()
         case AUX_SWITCH_ACRO_TRAINER:
         case AUX_SWITCH_EPM:
         case AUX_SWITCH_SPRAYER:
+        case AUX_SWITCH_EKF:
             do_aux_switch_function(g.ch8_option, ap.CH8_flag);
             break;
     }
@@ -146,8 +148,10 @@ static void do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
     switch(tmp_function) {
         case AUX_SWITCH_FLIP:
             // flip if switch is on, positive throttle and we're actually flying
-            if((ch_flag == AUX_SWITCH_HIGH) && (g.rc_3.control_in >= 0) && ap.takeoff_complete) {
-                init_flip();
+            if(ch_flag == AUX_SWITCH_HIGH) {
+                set_mode(FLIP);
+            }else{
+                flip_stop();
             }
             break;
 
@@ -276,13 +280,14 @@ static void do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
             }
             break;
 #endif
-        case AUX_SWITCH_RESETTOARMEDYAW:
-            if (ch_flag == AUX_SWITCH_HIGH) {
-                set_yaw_mode(YAW_RESETTOARMEDYAW);
-            }else{
-                set_yaw_mode(YAW_HOLD);
-            }
-            break;
+        // To-Do: add back support for this feature
+        //case AUX_SWITCH_RESETTOARMEDYAW:
+        //    if (ch_flag == AUX_SWITCH_HIGH) {
+        //        set_yaw_mode(YAW_RESETTOARMEDYAW);
+        //    }else{
+        //        set_yaw_mode(YAW_HOLD);
+        //    }
+        //    break;
 
         case AUX_SWITCH_ACRO_TRAINER:
             switch(ch_flag) {
@@ -337,21 +342,22 @@ static void do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
             }
             break;
 
-#if AUTOTUNE == ENABLED
+#if AUTOTUNE_ENABLED == ENABLED
         case AUX_SWITCH_AUTOTUNE:
             // turn on auto tuner
             switch(ch_flag) {
                 case AUX_SWITCH_LOW:
                 case AUX_SWITCH_MIDDLE:
-                    // turn off tuning and return to standard pids
-                    if (roll_pitch_mode == ROLL_PITCH_AUTOTUNE) {
-                        set_roll_pitch_mode(ROLL_PITCH_STABLE);
+                    // stop the autotune and return to original gains
+                    autotune_stop();
+                    // restore flight mode based on flight mode switch position
+                    if (control_mode == AUTOTUNE) {
+                        reset_control_switch();
                     }
                     break;
                 case AUX_SWITCH_HIGH:
-                    // start an auto tuning session
-                    // set roll-pitch mode to our special auto tuning stabilize roll-pitch mode
-                    set_roll_pitch_mode(ROLL_PITCH_AUTOTUNE);
+                    // start an autotuning session
+                    autotune_start();
                     break;
             }
             break;
@@ -367,6 +373,13 @@ static void do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
                 }
             }
             break;
+
+#if AP_AHRS_NAVEKF_AVAILABLE
+    case AUX_SWITCH_EKF:
+        ahrs.set_ekf_use(ch_flag==AUX_SWITCH_HIGH);
+        break;
+#endif
+        
     }
 }
 

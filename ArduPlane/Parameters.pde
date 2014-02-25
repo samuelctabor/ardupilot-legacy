@@ -682,7 +682,7 @@ const AP_Param::Info var_info[] PROGMEM = {
 
     // @Param: LOG_BITMASK
     // @DisplayName: Log bitmask
-    // @Description: Bitmap of what log types to enable in dataflash. This values is made up of the sum of each of the log types you want to be saved on dataflash. On a PX4 or Pixhawk the large storage size of a microSD card means it is usually best just to enable all log types by setting this to 65535. On APM2 the smaller 4 MByte dataflash means you need to be more selective in your logging or you may run out of log space while flying (in which case it will wrap and overwrite the start of the log). The individual bits are ATTITUDE_FAST=1, ATTITUDE_MEDIUM=2, GPS=4, PerformanceMonitoring=8, ControlTuning=16, NavigationTuning=32, Mode=64, IMU=128, Commands=256, Battery=512, Compass=1024, TECS=2048, Camera=4096, RCandServo=8192, Sonar=16384, Arming=32768, LogWhenDisarmed=1073741824
+    // @Description: Bitmap of what log types to enable in dataflash. This values is made up of the sum of each of the log types you want to be saved on dataflash. On a PX4 or Pixhawk the large storage size of a microSD card means it is usually best just to enable all log types by setting this to 65535. On APM2 the smaller 4 MByte dataflash means you need to be more selective in your logging or you may run out of log space while flying (in which case it will wrap and overwrite the start of the log). The individual bits are ATTITUDE_FAST=1, ATTITUDE_MEDIUM=2, GPS=4, PerformanceMonitoring=8, ControlTuning=16, NavigationTuning=32, Mode=64, IMU=128, Commands=256, Battery=512, Compass=1024, TECS=2048, Camera=4096, RCandServo=8192, Sonar=16384, Arming=32768, LogWhenDisarmed=65536
     // @Values: 0:Disabled,5190:APM2-Default,65535:PX4/Pixhawk-Default
     // @User: Advanced
     GSCALAR(log_bitmask,            "LOG_BITMASK",    DEFAULT_LOG_BITMASK),
@@ -747,6 +747,19 @@ const AP_Param::Info var_info[] PROGMEM = {
     // @Values: 0:Disabled,1:Enabled
     // @User: Standard
     GSCALAR(compass_enabled,        "MAG_ENABLE",     1),
+
+    // @Param: FLAP_IN_CHANNEL
+    // @DisplayName: Flap input channel
+    // @Description: An RC input channel to use for flaps control. If this is set to a RC channel number then that channel will be used for manual flaps control. When enabled, the percentage of flaps is taken as the percentage travel from the TRIM value of the channel to the MIN value of the channel. A value above the TRIM values will give inverse flaps (spoilers). This option needs to be enabled in conjunction with a FUNCTION setting on an output channel to one of the flap functions. When a FLAP_IN_CHANNEL is combined with auto-flaps the higher of the two flap percentages is taken. You must also enable a FLAPERON_OUTPUT flaperon mixer setting.
+    // @User: User
+    GSCALAR(flapin_channel,         "FLAP_IN_CHANNEL",  0),
+
+    // @Param: FLAPERON_OUTPUT
+    // @DisplayName: Flaperon output
+    // @Description: Enable flaperon output in software. If enabled then the APM will provide software flaperon mixing on the FLAPERON1 and FLAPERON2 output channels specified using the FUNCTION on two auxillary channels. There are 4 different mixing modes available, which refer to the 4 ways the flap and aileron outputs can be mapped to the two flaperon servos. Note that you must not use flaperon output mixing with hardware pass-through of RC values, such as with channel 8 manual control on an APM1. So if you use an APM1 then set FLTMODE_CH to something other than 8 before you enable FLAPERON_OUTPUT. Please also see the MIXING_GAIN parameter for the output gain of the mixer. FLAPERON_OUTPUT cannot be combined with ELEVON_OUTPUT or ELEVON_MIXING.
+    // @Values: 0:Disabled,1:UpUp,2:UpDown,3:DownUp,4:DownDown
+    // @User: User
+    GSCALAR(flaperon_output,        "FLAPERON_OUTPUT",  0),
 
     // @Param: FLAP_1_PERCNT
     // @DisplayName: Flap 1 percentage
@@ -994,6 +1007,12 @@ const AP_Param::Info var_info[] PROGMEM = {
 
 #if OBC_FAILSAFE == ENABLED
     GOBJECT(obc,  "FS_", APM_OBC),
+#endif
+
+#if AP_AHRS_NAVEKF_AVAILABLE
+    // @Group: EKF_
+    // @Path: ../libraries/AP_NavEKF/AP_NavEKF.cpp
+    GOBJECTN(ahrs.get_NavEKF(), NavEKF, "EKF_", NavEKF),
 #endif
 
     AP_VAREND

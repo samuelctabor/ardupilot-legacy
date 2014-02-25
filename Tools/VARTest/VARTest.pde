@@ -22,6 +22,7 @@
 #include <AP_ADC_AnalogSource.h>
 #include <AP_InertialSensor.h> // Inertial Sensor Library
 #include <AP_AHRS.h>         // ArduPilot Mega DCM Library
+#include <AP_NavEKF.h>
 #include <PID.h>            // PID library
 #include <RC_Channel.h>     // RC Channel Library
 #include <AP_RangeFinder.h>     // Range finder library
@@ -66,10 +67,10 @@ static Parameters g;
 static GPS         *g_gps;
 AP_GPS_Auto     g_gps_driver(&g_gps);
 AP_InertialSensor_MPU6000 ins;
-AP_AHRS_DCM  ahrs(ins, g_gps);
+AP_Baro_HIL      barometer;
+AP_AHRS_DCM  ahrs(ins, barometer, g_gps);
 
 static AP_Compass_HIL compass;
-AP_Baro_HIL      barometer;
 SITL					sitl;
 
 #define SERIAL0_BAUD 115200

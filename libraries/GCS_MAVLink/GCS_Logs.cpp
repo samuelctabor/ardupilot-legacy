@@ -110,6 +110,7 @@ void GCS_MAVLINK::handle_log_request_data(mavlink_message_t *msg, DataFlash_Clas
         dataflash.get_log_boundaries(packet.id, _log_data_page, end);
     }
 
+    _log_data_offset = packet.ofs;
     if (_log_data_offset >= _log_data_size) {
         _log_data_remaining = 0;
     } else {
@@ -118,7 +119,6 @@ void GCS_MAVLINK::handle_log_request_data(mavlink_message_t *msg, DataFlash_Clas
     if (_log_data_remaining > packet.count) {
         _log_data_remaining = packet.count;
     }
-    _log_data_offset = packet.ofs;
     _log_sending = true;
 
     handle_log_send(dataflash);
@@ -132,10 +132,20 @@ void GCS_MAVLINK::handle_log_send(DataFlash_Class &dataflash)
     if (_log_listing) {
         handle_log_send_listing(dataflash);
     }
+    if (!_log_sending) {
+        return;
+    }
     uint8_t num_sends = 1;
     if (chan == MAVLINK_COMM_0 && hal.gpio->usb_connected()) {
         // when on USB we can send a lot more data
         num_sends = 40;
+    } else if (chan == MAVLINK_COMM_1 && 
+               hal.uartC->get_flow_control() != AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE) {
+        num_sends = 10;        
+    } else if (chan == MAVLINK_COMM_2 && 
+               hal.uartD != NULL &&
+               hal.uartD->get_flow_control() != AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE) {
+        num_sends = 10;        
     }
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_AVR_SITL
@@ -143,10 +153,6 @@ void GCS_MAVLINK::handle_log_send(DataFlash_Class &dataflash)
     num_sends = 40;
 #endif
 
-    if (stream_slowdown != 0) {
-        // we're using a radio and starting to clag up, slowdown log send
-        num_sends = 1;
-    }
     for (uint8_t i=0; i<num_sends; i++) {
         if (_log_sending) {
             if (!handle_log_send_data(dataflash)) break;

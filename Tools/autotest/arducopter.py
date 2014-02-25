@@ -713,7 +713,7 @@ def fly_circle(mavproxy, mav, maxaltchange=10, holdtime=36):
     mavproxy.send('rc 4 1500\n')
 
     #set CIRCLE radius
-    mavproxy.send('param set CIRCLE_RADIUS 30\n')
+    mavproxy.send('param set CIRCLE_RADIUS 3000\n')
 
     # fly forward (east) at least 100m
     mavproxy.send('rc 2 1100\n')
@@ -822,7 +822,6 @@ def fly_ArduCopter(viewerip=None, map=False):
     mavproxy.expect('Received [0-9]+ parameters')
 
     # setup test parameters
-    mavproxy.send('param set SYSID_THISMAV %u\n' % random.randint(100, 200))
     mavproxy.send("param load %s/ArduCopter.parm\n" % testdir)
     mavproxy.expect('Loaded [0-9]+ parameters')
 
@@ -1165,7 +1164,6 @@ def fly_CopterAVC(viewerip=None, map=False):
     mavproxy.expect('Received [0-9]+ parameters')
 
     # setup test parameters
-    mavproxy.send('param set SYSID_THISMAV %u\n' % random.randint(100, 200))
     mavproxy.send("param load %s/CopterAVC.parm\n" % testdir)
     mavproxy.expect('Loaded [0-9]+ parameters')
 

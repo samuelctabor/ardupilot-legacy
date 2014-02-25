@@ -19,6 +19,9 @@ uint16_t AP_InertialSensor_HIL::_init_sensor( Sample_rate sample_rate ) {
     case RATE_200HZ:
         _sample_period_ms = 5;
         break;
+    case RATE_400HZ:
+        _sample_period_ms = 2.5;
+        break;
     }
     return AP_PRODUCT_ID_NONE;
 }
@@ -32,8 +35,8 @@ bool AP_InertialSensor_HIL::update( void ) {
     return true;
 }
 
-float AP_InertialSensor_HIL::get_delta_time() {
-    return _delta_time_usec * 1.0e-6;
+float AP_InertialSensor_HIL::get_delta_time() const {
+    return _sample_period_ms * 0.001f;
 }
 
 float AP_InertialSensor_HIL::get_gyro_drift_rate(void) {
@@ -64,38 +67,42 @@ bool AP_InertialSensor_HIL::wait_for_sample(uint16_t timeout_ms)
     return false;
 }
 
-void AP_InertialSensor_HIL::set_accel(const Vector3f &accel)
+void AP_InertialSensor_HIL::set_accel(uint8_t instance, const Vector3f &accel)
 {
-    _previous_accel[0] = _accel[0];
-    _accel[0] = accel;
-    _last_accel_usec = hal.scheduler->micros();
+    _previous_accel[instance] = _accel[instance];
+    _accel[instance] = accel;
+    _last_accel_usec[instance] = hal.scheduler->micros();
 }
 
-void AP_InertialSensor_HIL::set_gyro(const Vector3f &gyro)
+void AP_InertialSensor_HIL::set_gyro(uint8_t instance, const Vector3f &gyro)
 {
-    _gyro[0] = gyro;
-    _last_gyro_usec = hal.scheduler->micros();
+    _gyro[instance] = gyro;
+    _last_gyro_usec[instance] = hal.scheduler->micros();
 }
 
-/**
-   try to detect bad accel/gyro sensors
- */
-bool AP_InertialSensor_HIL::healthy(void) const
+bool AP_InertialSensor_HIL::get_gyro_health(uint8_t instance) const
 {
-    uint32_t tnow = hal.scheduler->micros();
-    if ((tnow - _last_accel_usec) > 40000) {
-        // accels have not updated
-        return false;
-    }
-    if ((tnow - _last_gyro_usec) > 40000) {
-        // gyros have not updated
-        return false;
-    }
-    if (fabs(_accel[0].x) > 30 && fabs(_accel[0].y) > 30 && fabs(_accel[0].z) > 30 &&
-        (_previous_accel[0] - _accel[0]).length() < 0.01f) {
-        // unchanging accel, large in all 3 axes. This is a likely
-        // accelerometer failure
-        return false;
-    }
-    return true;
+    return (hal.scheduler->micros() - _last_gyro_usec[instance]) < 40000;
 }
+
+bool AP_InertialSensor_HIL::get_accel_health(uint8_t instance) const
+{
+    return (hal.scheduler->micros() - _last_accel_usec[instance]) < 40000;
+}
+
+uint8_t AP_InertialSensor_HIL::get_gyro_count(void) const
+{
+    if (get_gyro_health(1)) {
+        return 2;
+    }
+    return 1;
+}
+
+uint8_t AP_InertialSensor_HIL::get_accel_count(void) const
+{
+    if (get_accel_health(1)) {
+        return 2;
+    }
+    return 1;
+}
+

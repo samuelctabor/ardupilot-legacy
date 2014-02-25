@@ -62,8 +62,7 @@ enum gcs_failsafe {
 // are now the same thing, and are sensors based. The old define is
 // kept to allow old APM_Config.h headers to keep working
 #define HIL_MODE_DISABLED                       0
-#define HIL_MODE_ATTITUDE                       1
-#define HIL_MODE_SENSORS                        2
+#define HIL_MODE_SENSORS                        1
 
 enum FlightMode {
     MANUAL        = 0,
@@ -163,7 +162,7 @@ enum log_messages {
 #define MASK_LOG_RC                     (1<<13)
 #define MASK_LOG_SONAR                  (1<<14)
 #define MASK_LOG_ARM_DISARM             (1<<15)
-#define MASK_LOG_WHEN_DISARMED          (1UL<<30)
+#define MASK_LOG_WHEN_DISARMED          (1UL<<16)
 
 // Waypoint Modes
 // ----------------

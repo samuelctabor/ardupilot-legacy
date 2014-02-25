@@ -26,11 +26,9 @@ void PX4RCOutput::init(void* unused)
     if (ioctl(_pwm_fd, PWM_SERVO_ARM, 0) != 0) {
         hal.console->printf("RCOutput: Unable to setup IO arming\n");
     }
-#ifdef PWM_SERVO_SET_ARM_OK
     if (ioctl(_pwm_fd, PWM_SERVO_SET_ARM_OK, 0) != 0) {
         hal.console->printf("RCOutput: Unable to setup IO arming OK\n");
     }
-#endif
     _rate_mask = 0;
     _alt_fd = -1;    
     _servo_count = 0;
@@ -157,6 +155,14 @@ void PX4RCOutput::set_safety_pwm(uint32_t chmask, uint16_t period_us)
     int ret = ioctl(_pwm_fd, PWM_SERVO_SET_DISARMED_PWM, (long unsigned int)&pwm_values);
     if (ret != OK) {
         hal.console->printf("Failed to setup disarmed PWM for 0x%08x to %u\n", (unsigned)chmask, period_us);
+    }
+}
+
+void PX4RCOutput::force_safety_off(void)
+{
+    int ret = ioctl(_pwm_fd, PWM_SERVO_SET_FORCE_SAFETY_OFF, 0);
+    if (ret != OK) {
+        hal.console->printf("Failed to force safety off\n");
     }
 }
 

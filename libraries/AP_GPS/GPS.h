@@ -105,7 +105,8 @@ public:
     bool print_errors;          ///< deprecated
 
     // HIL support
-    virtual void setHIL(uint64_t time_epoch_ms, float latitude, float longitude, float altitude,
+    virtual void setHIL(Fix_Status fix_status,
+                        uint64_t time_epoch_ms, float latitude, float longitude, float altitude,
                         float ground_speed, float ground_course, float speed_3d, uint8_t num_sats);
 
     // components of velocity in 2D, in m/s
@@ -142,8 +143,8 @@ public:
     // return last fix time since the 1/1/1970 in microseconds
     uint64_t time_epoch_usec(void);
 
-	// return true if the GPS supports raw velocity values
-
+	// return true if the GPS supports vertical velocity values
+    bool have_vertical_velocity(void) const { return _have_raw_velocity; }
 
 protected:
     AP_HAL::UARTDriver *_port;   ///< port the GPS is attached to

@@ -78,7 +78,7 @@ static NOINLINE void send_heartbeat(mavlink_channel_t chan)
 #endif
 
     // we are armed if we are not initialising
-    if (control_mode != INITIALISING) {
+    if (control_mode != INITIALISING && ahrs.get_armed()) {
         base_mode |= MAV_MODE_FLAG_SAFETY_ARMED;
     }
 
@@ -422,7 +422,7 @@ static void NOINLINE send_hwstatus(mavlink_channel_t chan)
 {
     mavlink_msg_hwstatus_send(
         chan,
-        board_voltage(),
+        hal.analogin->board_voltage()*1000,
         hal.i2c->lockup_count());
 }
 
@@ -517,6 +517,8 @@ static bool mavlink_try_send_message(mavlink_channel_t chan, enum ap_message id,
     case MSG_EXTENDED_STATUS1:
         CHECK_PAYLOAD_SIZE(SYS_STATUS);
         send_extended_status1(chan, packet_drops);
+        CHECK_PAYLOAD_SIZE(POWER_STATUS);
+        gcs[chan-MAVLINK_COMM_0].send_power_status();
         break;
 
     case MSG_EXTENDED_STATUS2:
@@ -1814,7 +1816,8 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
             float cog = wrap_360_cd(ToDeg(atan2f(packet.vy, packet.vx)) * 100);
 			
             // set gps hil sensor
-            g_gps->setHIL(packet.time_usec/1000,
+            g_gps->setHIL(GPS::FIX_3D,
+                          packet.time_usec/1000,
                           packet.lat*1.0e-7f, packet.lon*1.0e-7f, packet.alt*1.0e-3f,
                           vel*1.0e-2f, cog*1.0e-2f, 0, 10);
 			
@@ -1830,9 +1833,9 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
             accels.y = packet.yacc * (GRAVITY_MSS/1000.0f);
             accels.z = packet.zacc * (GRAVITY_MSS/1000.0f);
             
-            ins.set_gyro(gyros);
+            ins.set_gyro(0, gyros);
 
-            ins.set_accel(accels);
+            ins.set_accel(0, accels);
             compass.setHIL(packet.roll, packet.pitch, packet.yaw);
             break;
 		}

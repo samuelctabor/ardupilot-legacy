@@ -91,7 +91,7 @@ static NOINLINE void send_heartbeat(mavlink_channel_t chan)
 #endif
 
     // we are armed if we are not initialising
-    if (control_mode != INITIALISING && arming.is_armed()) {
+    if (control_mode != INITIALISING && ahrs.get_armed()) {
         base_mode |= MAV_MODE_FLAG_SAFETY_ARMED;
     }
 
@@ -239,7 +239,6 @@ static NOINLINE void send_extended_status1(mavlink_channel_t chan)
         0, // comm drops %,
         0, // comm drops in pkts,
         0, 0, 0, 0);
-
 }
 
 static void NOINLINE send_location(mavlink_channel_t chan)
@@ -532,7 +531,7 @@ static void NOINLINE send_hwstatus(mavlink_channel_t chan)
 {
     mavlink_msg_hwstatus_send(
         chan,
-        board_voltage(),
+        hal.analogin->board_voltage()*1000,
         hal.i2c->lockup_count());
 }
 
@@ -619,6 +618,8 @@ static bool mavlink_try_send_message(mavlink_channel_t chan, enum ap_message id)
     case MSG_EXTENDED_STATUS1:
         CHECK_PAYLOAD_SIZE(SYS_STATUS);
         send_extended_status1(chan);
+        CHECK_PAYLOAD_SIZE(POWER_STATUS);
+        gcs[chan-MAVLINK_COMM_0].send_power_status();
         break;
 
     case MSG_EXTENDED_STATUS2:
@@ -725,6 +726,8 @@ static bool mavlink_try_send_message(mavlink_channel_t chan, enum ap_message id)
     case MSG_SIMSTATE:
         CHECK_PAYLOAD_SIZE(SIMSTATE);
         send_simstate(chan);
+        CHECK_PAYLOAD_SIZE(AHRS2);
+        gcs[chan-MAVLINK_COMM_0].send_ahrs2(ahrs);
         break;
 
     case MSG_HWSTATUS:
@@ -2120,7 +2123,8 @@ mission_failed:
 
         if (g_gps != NULL) {
             // set gps hil sensor
-            g_gps->setHIL(packet.time_usec/1000,
+            g_gps->setHIL(GPS::FIX_3D,
+                          packet.time_usec/1000,
                           packet.lat*1.0e-7, packet.lon*1.0e-7, packet.alt*1.0e-3,
                           vel*1.0e-2, cog*1.0e-2, 0, 10);
         }
@@ -2137,8 +2141,8 @@ mission_failed:
         accels.y = packet.yacc * (GRAVITY_MSS/1000.0);
         accels.z = packet.zacc * (GRAVITY_MSS/1000.0);
 
-        ins.set_gyro(gyros);
-        ins.set_accel(accels);
+        ins.set_gyro(0, gyros);
+        ins.set_accel(0, accels);
 
         barometer.setHIL(packet.alt*0.001f);
         compass.setHIL(packet.roll, packet.pitch, packet.yaw);

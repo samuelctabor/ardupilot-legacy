@@ -483,9 +483,6 @@ static void update_notify()
 static void resetPerfData(void) {
     mainLoop_count                  = 0;
     G_Dt_max                        = 0;
-    ahrs.renorm_range_count         = 0;
-    ahrs.renorm_blowup_count        = 0;
-    gps_fix_count                   = 0;
     perf_mon_timer                  = millis();
 }
 
@@ -535,15 +532,6 @@ static void check_usb_mux(void)
 }
 
 
-/*
- * Read Vcc vs 1.1v internal reference
- */
-uint16_t board_voltage(void)
-{
-    return vcc_pin->voltage_latest() * 1000;
-}
-
-
 static void
 print_flight_mode(AP_HAL::BetterStream *port, uint8_t mode)
 {
@@ -580,6 +568,9 @@ print_flight_mode(AP_HAL::BetterStream *port, uint8_t mode)
         break;
     case LOITER:
         port->print_P(PSTR("Loiter"));
+        break;
+    case GUIDED:
+        port->print_P(PSTR("Guided"));
         break;
     default:
         port->printf_P(PSTR("Mode(%u)"), (unsigned)mode);
@@ -618,15 +609,7 @@ static bool should_log(uint32_t mask)
     if (!(mask & g.log_bitmask) || in_mavlink_delay) {
         return false;
     }
-    bool armed;
-    if (arming.arming_required() == AP_Arming::NO) {
-        // for logging purposes consider us armed if we either don't
-        // have a safety switch, or we have one and it is disarmed
-        armed = (hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_DISARMED);
-    } else {
-        armed = arming.is_armed();
-    }
-    bool ret = armed || (g.log_bitmask & MASK_LOG_WHEN_DISARMED) != 0;
+    bool ret = ahrs.get_armed() || (g.log_bitmask & MASK_LOG_WHEN_DISARMED) != 0;
     if (ret && !DataFlash.logging_started() && !in_log_download) {
         // we have to set in_mavlink_delay to prevent logging while
         // writing headers

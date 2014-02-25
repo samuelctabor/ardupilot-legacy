@@ -8,11 +8,10 @@
 class AP_Baro_HIL : public AP_Baro
 {
 private:
-    uint8_t BMP085_State;
     float Temp;
     float Press;
-    int32_t _pressure_sum;
-    int32_t _temperature_sum;
+    float _pressure_sum;
+    float _temperature_sum;
     volatile uint8_t _count;
 
 public:
@@ -21,6 +20,7 @@ public:
     float get_pressure();
     float get_temperature();
     void setHIL(float altitude_msl);
+    void setHIL(float pressure, float temperature);
 };
 
 #endif //  __AP_BARO__HIL_H__

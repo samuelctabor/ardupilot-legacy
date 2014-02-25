@@ -169,8 +169,6 @@ struct PACKED log_Performance {
     uint32_t loop_time;
     uint16_t main_loop_count;
     uint32_t g_dt_max;
-    uint8_t  renorm_count;
-    uint8_t  renorm_blowup;
     int16_t  gyro_drift_x;
     int16_t  gyro_drift_y;
     int16_t  gyro_drift_z;
@@ -187,8 +185,6 @@ static void Log_Write_Performance()
         loop_time       : millis()- perf_mon_timer,
         main_loop_count : mainLoop_count,
         g_dt_max        : G_Dt_max,
-        renorm_count    : ahrs.renorm_range_count,
-        renorm_blowup   : ahrs.renorm_blowup_count,
         gyro_drift_x    : (int16_t)(ahrs.get_gyro_drift().x * 1000),
         gyro_drift_y    : (int16_t)(ahrs.get_gyro_drift().y * 1000),
         gyro_drift_z    : (int16_t)(ahrs.get_gyro_drift().z * 1000),
@@ -450,10 +446,13 @@ static void Log_Write_Current()
         throttle_in             : channel_throttle->control_in,
         battery_voltage         : (int16_t)(battery.voltage() * 100.0),
         current_amps            : (int16_t)(battery.current_amps() * 100.0),
-        board_voltage           : board_voltage(),
+        board_voltage           : (uint16_t)(hal.analogin->board_voltage()*1000),
         current_total           : battery.current_total_mah()
     };
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
+
+    // also write power status
+    DataFlash.Log_Write_Power();
 }
 
 struct PACKED log_Compass {
@@ -520,12 +519,17 @@ static void Log_Write_RC(void)
     DataFlash.Log_Write_RCOUT();
 }
 
+static void Log_Write_Baro(void)
+{
+    DataFlash.Log_Write_Baro(barometer);
+}
+
 static const struct LogStructure log_structure[] PROGMEM = {
     LOG_COMMON_STRUCTURES,
     { LOG_ATTITUDE_MSG, sizeof(log_Attitude),       
       "ATT", "IccC",        "TimeMS,Roll,Pitch,Yaw" },
     { LOG_PERFORMANCE_MSG, sizeof(log_Performance), 
-      "PM",  "IIHIBBhhhBH", "TimeMS,LTime,MLC,gDt,RNCnt,RNBl,GDx,GDy,GDz,I2CErr,INSErr" },
+      "PM",  "IIHIhhhBH", "TimeMS,LTime,MLC,gDt,GDx,GDy,GDz,I2CErr,INSErr" },
     { LOG_CMD_MSG, sizeof(log_Cmd),                 
       "CMD", "IBBBBBeLL",   "TimeMS,CTot,CNum,CId,COpt,Prm1,Alt,Lat,Lng" },
     { LOG_CAMERA_MSG, sizeof(log_Camera),                 

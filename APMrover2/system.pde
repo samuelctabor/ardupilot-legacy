@@ -117,6 +117,9 @@ static void init_ardupilot()
     // used to detect in-flight resets
     g.num_resets.set_and_save(g.num_resets+1);
 
+    // init baro before we start the GCS, so that the CLI baro test works
+    barometer.init();
+
 	// init the GCS
 	gcs[0].init(hal.uartA);
 
@@ -173,6 +176,9 @@ static void init_ardupilot()
 
 	// initialise sonar
     init_sonar();
+
+    // and baro for EKF
+    init_barometer();
 
 	// Do GPS init
 	g_gps = &g_gps_driver;
@@ -397,9 +403,6 @@ static void update_notify()
 static void resetPerfData(void) {
 	mainLoop_count 			= 0;
 	G_Dt_max 				= 0;
-	ahrs.renorm_range_count 	= 0;
-	ahrs.renorm_blowup_count = 0;
-	gps_fix_count 			= 0;
 	perf_mon_timer 			= millis();
 }
 
@@ -448,14 +451,6 @@ static void check_usb_mux(void)
 #endif
 }
 
-
-/*
- * Read board voltage in millivolts
- */
-uint16_t board_voltage(void)
-{
-    return vcc_pin->voltage_latest() * 1000;
-}
 
 static void
 print_mode(AP_HAL::BetterStream *port, uint8_t mode)
@@ -526,10 +521,7 @@ static bool should_log(uint32_t mask)
     if (!(mask & g.log_bitmask) || in_mavlink_delay) {
         return false;
     }
-    bool armed;
-    armed = (hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_DISARMED);
-
-    bool ret = armed || (g.log_bitmask & MASK_LOG_WHEN_DISARMED) != 0;
+    bool ret = ahrs.get_armed() || (g.log_bitmask & MASK_LOG_WHEN_DISARMED) != 0;
     if (ret && !DataFlash.logging_started() && !in_log_download) {
         // we have to set in_mavlink_delay to prevent logging while
         // writing headers

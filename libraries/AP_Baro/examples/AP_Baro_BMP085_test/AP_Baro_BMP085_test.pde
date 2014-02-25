@@ -19,11 +19,21 @@
 #include <DataFlash.h>
 #include <GCS_MAVLink.h>
 #include <AP_Notify.h>
-
+#include <AP_Compass.h>
+#include <AP_Declination.h>
+#include <AP_Airspeed.h>
+#include <AP_Vehicle.h>
+#include <AP_AHRS.h>
 #include <AP_HAL_AVR.h>
 #include <AP_HAL_FLYMAPLE.h>
 #include <AP_HAL_Linux.h>
 #include <AP_HAL_Empty.h>
+#include <AP_AHRS.h>
+#include <AP_Airspeed.h>
+#include <AP_Vehicle.h>
+#include <AP_ADC_AnalogSource.h>
+#include <AP_Compass.h>
+#include <AP_Declination.h>
 
 /* Build this example sketch only for the APM1. */
 const AP_HAL::HAL& hal = AP_HAL_BOARD_DRIVER;

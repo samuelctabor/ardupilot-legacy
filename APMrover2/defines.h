@@ -41,8 +41,7 @@ enum ch7_option {
 
 // HIL enumerations
 #define HIL_MODE_DISABLED			0
-#define HIL_MODE_ATTITUDE			1
-#define HIL_MODE_SENSORS			2
+#define HIL_MODE_SENSORS			1
 
 // Auto Pilot modes
 // ----------------
@@ -116,7 +115,7 @@ enum mode {
 #define MASK_LOG_CAMERA   		(1<<12)
 #define MASK_LOG_STEERING  		(1<<13)
 #define MASK_LOG_RC     		(1<<14)
-#define MASK_LOG_WHEN_DISARMED  (1<<30)
+#define MASK_LOG_WHEN_DISARMED  (1UL<<16)
 
 // Waypoint Modes
 // ----------------
@@ -173,6 +172,12 @@ enum mode {
 #define CONFIG_INS_PX4     4
 #define CONFIG_INS_FLYMAPLE 5
 #define CONFIG_INS_L3G4200D 6
+
+// barometer driver types
+#define AP_BARO_BMP085   1
+#define AP_BARO_MS5611   2
+#define AP_BARO_PX4      3
+#define AP_BARO_HIL      4
 
 // compass driver types
 #define AP_COMPASS_HMC5843   1

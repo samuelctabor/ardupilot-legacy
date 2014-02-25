@@ -64,6 +64,20 @@ static bool auto_check_trigger(void)
     return false;   
 }
 
+/*
+  work out if we are going to use pivot steering
+ */
+static bool use_pivot_steering(void)
+{
+    if (control_mode >= AUTO && g.skid_steer_out && g.pivot_turn_angle != 0) {
+        int16_t bearing_error = wrap_180_cd(nav_controller->target_bearing_cd() - ahrs.yaw_sensor) / 100;
+        if (abs(bearing_error) > g.pivot_turn_angle) {
+            return true;
+        }
+    }
+    return false;
+}
+
 
 /*
   calculate the throtte for auto-throttle modes
@@ -110,6 +124,10 @@ static void calc_throttle(float target_speed)
     } else {
         channel_throttle->servo_out = constrain_int16(throttle, g.throttle_min, g.throttle_max);
     }
+    
+    if (use_pivot_steering()) {
+        channel_throttle->servo_out = 0;
+    }
 }
 
 /*****************************************
@@ -137,6 +155,14 @@ static void calc_lateral_acceleration()
     // negative error = left turn
 	// positive error = right turn
     lateral_acceleration = nav_controller->lateral_acceleration();
+    if (use_pivot_steering()) {
+        int16_t bearing_error = wrap_180_cd(nav_controller->target_bearing_cd() - ahrs.yaw_sensor) / 100;
+        if (bearing_error > 0) {
+            lateral_acceleration = g.turn_max_g*GRAVITY_MSS;
+        } else {
+            lateral_acceleration = -g.turn_max_g*GRAVITY_MSS;
+        }
+    }
 }
 
 /*
@@ -144,13 +170,6 @@ static void calc_lateral_acceleration()
  */
 static void calc_nav_steer()
 {
-    float speed = g_gps->ground_speed_cm * 0.01f;
-
-    if (speed < 1.0f) {
-        // gps speed isn't very accurate at low speed
-        speed = 1.0f;
-    }
-
     // add in obstacle avoidance
     lateral_acceleration += (obstacle.turn_angle/45.0f) * g.turn_max_g;
 

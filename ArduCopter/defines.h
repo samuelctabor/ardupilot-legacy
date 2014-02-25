@@ -15,33 +15,12 @@
 
 // Flight modes
 // ------------
-#define YAW_HOLD                        0       // heading hold at heading in control_yaw but allow input from pilot
-#define YAW_ACRO                        1       // pilot controlled yaw using rate controller
-#define YAW_LOOK_AT_NEXT_WP             2       // point towards next waypoint (no pilot input accepted)
-#define YAW_LOOK_AT_LOCATION            3       // point towards a location held in yaw_look_at_WP (no pilot input accepted)
-#define YAW_CIRCLE                      4       // point towards a location held in yaw_look_at_WP (no pilot input accepted)
-#define YAW_LOOK_AT_HOME    		    5       // point towards home (no pilot input accepted)
-#define YAW_LOOK_AT_HEADING    		    6       // point towards a particular angle (not pilot input accepted)
-#define YAW_LOOK_AHEAD					7		// WARNING!  CODE IN DEVELOPMENT NOT PROVEN
-#define YAW_DRIFT                       8       //
-#define YAW_RESETTOARMEDYAW				9       // point towards heading at time motors were armed
-
-#define ROLL_PITCH_STABLE           0       // pilot input roll, pitch angles
-#define ROLL_PITCH_ACRO             1       // pilot inputs roll, pitch rotation rates in body frame
-#define ROLL_PITCH_AUTO             2       // no pilot input.  autopilot roll, pitch is sent to stabilize controller inputs
-#define ROLL_PITCH_STABLE_OF        3       // pilot inputs roll, pitch angles which are mixed with optical flow based position controller lean anbles
-#define ROLL_PITCH_DRIFT            4       //
-#define ROLL_PITCH_LOITER           5       // pilot inputs the desired horizontal velocities
-#define ROLL_PITCH_SPORT            6       // pilot inputs roll, pitch rotation rates in earth frame
-#define ROLL_PITCH_AUTOTUNE         7       // description of new roll-pitch mode
-
-#define THROTTLE_MANUAL                     0   // manual throttle mode - pilot input goes directly to motors
-#define THROTTLE_MANUAL_TILT_COMPENSATED    1   // mostly manual throttle but with some tilt compensation
-#define THROTTLE_HOLD                       2   // alt hold plus pilot input of climb rate
-#define THROTTLE_AUTO                       3   // auto pilot altitude controller with target altitude held in next_WP.alt
-#define THROTTLE_LAND                       4   // landing throttle controller
-#define THROTTLE_MANUAL_HELI                5   // pilot manually controlled throttle for traditional helicopters
-
+#define AUTO_YAW_HOLD                   0       // pilot controls the heading
+#define AUTO_YAW_LOOK_AT_NEXT_WP        1       // point towards next waypoint (no pilot input accepted)
+#define AUTO_YAW_ROI                    2       // point towards a location held in roi_WP (no pilot input accepted)
+#define AUTO_YAW_LOOK_AT_HEADING        3       // point towards a particular angle (not pilot input accepted)
+#define AUTO_YAW_LOOK_AHEAD             4       // point in the direction the copter is moving
+#define AUTO_YAW_RESETTOARMEDYAW        5       // point towards heading at time motors were armed
 
 // sonar - for use with CONFIG_SONAR_SOURCE
 #define SONAR_SOURCE_ADC 1
@@ -73,6 +52,7 @@
 #define AUX_SWITCH_AUTOTUNE         17      // auto tune
 #define AUX_SWITCH_LAND             18      // change to LAND flight mode
 #define AUX_SWITCH_EPM              19      // Operate the EPM cargo gripper low=off, middle=neutral, high=on
+#define AUX_SWITCH_EKF              20      // Enable NavEKF
 
 // values used by the ap.ch7_opt and ap.ch8_opt flags
 #define AUX_SWITCH_LOW              0       // indicates auxiliar switch is in the low position (pwm <1200)
@@ -89,6 +69,7 @@
 #define HELI_FRAME 6
 #define OCTA_QUAD_FRAME 7
 #define SINGLE_FRAME 8
+#define COAX_FRAME 9
 
 // Internal defines, don't edit and expect things to work
 // -------------------------------------------------------
@@ -109,8 +90,7 @@
 
 // HIL enumerations
 #define HIL_MODE_DISABLED               0
-#define HIL_MODE_ATTITUDE               1
-#define HIL_MODE_SENSORS                2
+#define HIL_MODE_SENSORS                1
 
 // Auto Pilot modes
 // ----------------
@@ -122,12 +102,13 @@
 #define LOITER 5                        // Hold a single location
 #define RTL 6                           // AUTO control
 #define CIRCLE 7                        // AUTO control
-#define POSITION 8                      // AUTO control
 #define LAND 9                          // AUTO control
 #define OF_LOITER 10                    // Hold a single location using optical flow sensor
 #define DRIFT 11                        // DRIFT mode (Note: 12 is no longer used)
 #define SPORT 13                        // earth frame rate control
-#define NUM_MODES 14
+#define FLIP        14                  // flip the vehicle on the roll axis
+#define AUTOTUNE    15                  // autotune the vehicle's roll and pitch gains
+#define NUM_MODES   16
 
 
 // CH_6 Tuning
@@ -142,7 +123,6 @@
 #define CH6_YAW_RATE_KD                 26  // body frame yaw rate controller's D term
 #define CH6_ALTITUDE_HOLD_KP            14  // altitude hold controller's P term (alt error to desired rate)
 #define CH6_THROTTLE_RATE_KP            7   // throttle rate controller's P term (desired rate to acceleration or motor output)
-#define CH6_THROTTLE_RATE_KD            37  // throttle rate controller's D term (desired rate to acceleration or motor output)
 #define CH6_THROTTLE_ACCEL_KP           34  // accel based throttle controller's P term
 #define CH6_THROTTLE_ACCEL_KI           35  // accel based throttle controller's I term
 #define CH6_THROTTLE_ACCEL_KD           36  // accel based throttle controller's D term
@@ -164,29 +144,27 @@
 #define CH6_DECLINATION                 38  // compass declination in radians
 #define CH6_CIRCLE_RATE                 39  // circle turn rate in degrees (hard coded to about 45 degrees in either direction)
 #define CH6_SONAR_GAIN                  41  // sonar gain
-#define CH6_LOIT_SPEED                  42  // maximum speed during loiter (0 to 10m/s)
+#define CH6_EKF_VERTICAL_POS            42  // EKF's baro vs accel (higher rely on accels more, baro impact is reduced).  Range should be 0.2 ~ 4.0?  2.0 is default
+#define CH6_EKF_HORIZONTAL_POS          43  // EKF's gps vs accel (higher rely on accels more, gps impact is reduced).  Range should be 1.0 ~ 3.0?  1.5 is default
+#define CH6_EKF_ACCEL_NOISE             44  // EKF's accel noise (lower means trust accels more, gps & baro less).  Range should be 0.02 ~ 0.5  0.5 is default (but very robust at that level)
 
 // Acro Trainer types
 #define ACRO_TRAINER_DISABLED   0
 #define ACRO_TRAINER_LEVELING   1
 #define ACRO_TRAINER_LIMITED    2
 
+// RC Feel roll/pitch definitions
+#define RC_FEEL_RP_VERY_SOFT        0
+#define RC_FEEL_RP_SOFT             25
+#define RC_FEEL_RP_MEDIUM           50
+#define RC_FEEL_RP_CRISP            75
+#define RC_FEEL_RP_VERY_CRISP       100
+
 // Commands - Note that APM now uses a subset of the MAVLink protocol
 // commands.  See enum MAV_CMD in the GCS_Mavlink library
 #define CMD_BLANK 0 // there is no command stored in the mem location
                     // requested
 #define NO_COMMAND 0
-
-// Earth frame and body frame definitions used by rate controllers
-#define EARTH_FRAME         0
-#define BODY_FRAME          1
-#define BODY_EARTH_FRAME    2
-
-// Navigation modes held in nav_mode variable
-#define NAV_NONE        0
-#define NAV_CIRCLE      1
-#define NAV_LOITER      2
-#define NAV_WP          3
 
 // Yaw behaviours during missions - possible values for WP_YAW_BEHAVIOR parameter
 #define WP_YAW_BEHAVIOR_NONE                          0   // auto pilot will never control yaw during missions or rtl (except for DO_CONDITIONAL_YAW command received)
@@ -205,13 +183,31 @@
 //#define WP_OPTION_					64
 #define WP_OPTION_NEXT_CMD                      128
 
-// RTL state
-#define RTL_STATE_START             0
-#define RTL_STATE_INITIAL_CLIMB     1
-#define RTL_STATE_RETURNING_HOME    2
-#define RTL_STATE_LOITERING_AT_HOME 3
-#define RTL_STATE_FINAL_DESCENT     4
-#define RTL_STATE_LAND              5
+// Auto modes
+enum AutoMode {
+    Auto_TakeOff,
+    Auto_WP,
+    Auto_Land,
+    Auto_RTL,
+    Auto_Circle
+};
+
+// RTL states
+enum RTLState {
+    InitialClimb,
+    ReturnHome,
+    LoiterAtHome,
+    FinalDescent,
+    Land
+};
+
+// Flip states
+enum FlipState {
+    Flip_Start,
+    Flip_Roll,
+    Flip_Recover,
+    Flip_Abandon
+};
 
 // LAND state
 #define LAND_STATE_FLY_TO_LOCATION  0
@@ -277,9 +273,8 @@
 #define DATA_LAND_COMPLETE              18
 #define DATA_NOT_LANDED                 28
 #define DATA_LOST_GPS                   19
-#define DATA_BEGIN_FLIP                 21
-#define DATA_END_FLIP                   22
-#define DATA_EXIT_FLIP                  23
+#define DATA_FLIP_START                 21
+#define DATA_FLIP_END                   22
 #define DATA_SET_HOME                   25
 #define DATA_SET_SIMPLE_ON              26
 #define DATA_SET_SIMPLE_OFF             27
@@ -287,10 +282,10 @@
 #define DATA_AUTOTUNE_INITIALISED       30
 #define DATA_AUTOTUNE_OFF               31
 #define DATA_AUTOTUNE_RESTART           32
-#define DATA_AUTOTUNE_COMPLETE          33
-#define DATA_AUTOTUNE_ABANDONED         34
+#define DATA_AUTOTUNE_SUCCESS           33
+#define DATA_AUTOTUNE_FAILED            34
 #define DATA_AUTOTUNE_REACHED_LIMIT     35
-#define DATA_AUTOTUNE_TESTING           36
+#define DATA_AUTOTUNE_PILOT_TESTING     36
 #define DATA_AUTOTUNE_SAVEDGAINS        37
 #define DATA_SAVE_TRIM                  38
 #define DATA_SAVEWP_ADD_WP              39
@@ -356,6 +351,8 @@
 #define ERROR_SUBSYSTEM_FLIGHT_MODE         10
 #define ERROR_SUBSYSTEM_GPS                 11
 #define ERROR_SUBSYSTEM_CRASH_CHECK         12
+#define ERROR_SUBSYSTEM_FLIP                13
+#define ERROR_SUBSYSTEM_AUTOTUNE            14
 // general error codes
 #define ERROR_CODE_ERROR_RESOLVED           0
 #define ERROR_CODE_FAILED_TO_INITIALISE     1
@@ -372,6 +369,10 @@
 #define ERROR_CODE_MAIN_INS_DELAY           1
 // subsystem specific error codes -- crash checker
 #define ERROR_CODE_CRASH_CHECK_CRASH        1
+// subsystem specific error codes -- flip
+#define ERROR_CODE_FLIP_ABANDONED           2
+// subsystem specific error codes -- autotune
+#define ERROR_CODE_AUTOTUNE_BAD_GAINS       2
 
 // Arming Check Enable/Disable bits
 #define ARMING_CHECK_NONE                   0x00

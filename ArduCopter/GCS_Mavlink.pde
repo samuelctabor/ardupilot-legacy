@@ -102,6 +102,8 @@ static NOINLINE void send_heartbeat(mavlink_channel_t chan)
         MAV_TYPE_HELICOPTER,
 #elif (FRAME_CONFIG == SINGLE_FRAME)  //because mavlink did not define a singlecopter, we use a rocket
         MAV_TYPE_ROCKET,
+#elif (FRAME_CONFIG == COAX_FRAME)  //because mavlink did not define a singlecopter, we use a rocket
+        MAV_TYPE_ROCKET,
 #else
   #error Unrecognised frame type
 #endif
@@ -113,15 +115,16 @@ static NOINLINE void send_heartbeat(mavlink_channel_t chan)
 
 static NOINLINE void send_attitude(mavlink_channel_t chan)
 {
+    const Vector3f &gyro = ins.get_gyro();
     mavlink_msg_attitude_send(
         chan,
         millis(),
         ahrs.roll,
         ahrs.pitch,
         ahrs.yaw,
-        omega.x,
-        omega.y,
-        omega.z);
+        gyro.x,
+        gyro.y,
+        gyro.z);
 }
 
 #if AC_FENCE == ENABLED
@@ -172,9 +175,6 @@ static NOINLINE void send_extended_status1(mavlink_channel_t chan, uint16_t pack
         control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_Z_ALTITUDE_CONTROL;
         control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_XY_POSITION_CONTROL;
         break;
-    case POSITION:
-        control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_XY_POSITION_CONTROL;
-        break;
     case SPORT:
         control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_Z_ALTITUDE_CONTROL;
         break;
@@ -185,7 +185,7 @@ static NOINLINE void send_extended_status1(mavlink_channel_t chan, uint16_t pack
     if (g.compass_enabled && compass.healthy() && ahrs.use_compass()) {
         control_sensors_health |= MAV_SYS_STATUS_SENSOR_3D_MAG;
     }
-    if (g_gps != NULL && g_gps->status() > GPS::NO_GPS && !gps_glitch.glitching()) {
+    if (g_gps != NULL && g_gps->status() > GPS::NO_GPS && (!gps_glitch.glitching()||ap.usb_connected)) {
         control_sensors_health |= MAV_SYS_STATUS_SENSOR_GPS;
     }
     if (ap.rc_receiver_present && !failsafe.radio) {
@@ -246,14 +246,16 @@ static void NOINLINE send_location(mavlink_channel_t chan)
 
 static void NOINLINE send_nav_controller_output(mavlink_channel_t chan)
 {
+    Vector3f targets;
+    get_angle_targets_for_reporting(targets);
     mavlink_msg_nav_controller_output_send(
         chan,
-        control_roll / 1.0e2f,
-        control_pitch / 1.0e2f,
-        control_yaw / 1.0e2f,
+        targets.x / 1.0e2f,
+        targets.y / 1.0e2f,
+        targets.z / 1.0e2f,
         wp_bearing / 1.0e2f,
         wp_distance / 1.0e2f,
-        altitude_error / 1.0e2f,
+        pos_control.get_alt_error() / 1.0e2f,
         0,
         0);
 }
@@ -284,7 +286,7 @@ static void NOINLINE send_hwstatus(mavlink_channel_t chan)
 {
     mavlink_msg_hwstatus_send(
         chan,
-        board_voltage(),
+        hal.analogin->board_voltage()*1000,
         hal.i2c->lockup_count());
 }
 
@@ -572,6 +574,8 @@ static bool mavlink_try_send_message(mavlink_channel_t chan, enum ap_message id,
     case MSG_EXTENDED_STATUS1:
         CHECK_PAYLOAD_SIZE(SYS_STATUS);
         send_extended_status1(chan, packet_drops);
+        CHECK_PAYLOAD_SIZE(POWER_STATUS);
+        gcs[chan-MAVLINK_COMM_0].send_power_status();
         break;
 
     case MSG_EXTENDED_STATUS2:
@@ -677,6 +681,10 @@ static bool mavlink_try_send_message(mavlink_channel_t chan, enum ap_message id,
 #if CONFIG_HAL_BOARD == HAL_BOARD_AVR_SITL
         CHECK_PAYLOAD_SIZE(SIMSTATE);
         send_simstate(chan);
+#endif
+#if AP_AHRS_NAVEKF_AVAILABLE
+        CHECK_PAYLOAD_SIZE(AHRS2);
+        gcs[chan-MAVLINK_COMM_0].send_ahrs2(ahrs);
 #endif
         break;
 
@@ -1135,6 +1143,12 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
         break;
     }
 
+    case MAVLINK_MSG_ID_COMMAND_ACK:
+    {
+        command_ack_counter++;
+        break;
+    }
+
     case MAVLINK_MSG_ID_COMMAND_LONG:
     {
         // decode
@@ -1170,15 +1184,14 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
             break;
 
         case MAV_CMD_PREFLIGHT_CALIBRATION:
+            result = MAV_RESULT_ACCEPTED;
             if (packet.param1 == 1 ||
                 packet.param2 == 1) {
                 ins.init_accel();
                 ahrs.set_trim(Vector3f(0,0,0));             // clear out saved trim
             } 
             if (packet.param3 == 1) {
-#if HIL_MODE != HIL_MODE_ATTITUDE
                 init_barometer(false);                      // fast barometer calibratoin
-#endif
             }
             if (packet.param4 == 1) {
                 trim_radio();
@@ -1192,7 +1205,10 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
                     ahrs.set_trim(Vector3f(trim_roll, trim_pitch, 0));
                 }
             }
-            result = MAV_RESULT_ACCEPTED;
+            if (packet.param6 == 1) {
+                // compassmot calibration
+                result = mavlink_compassmot(chan);
+            }
             break;
 
         case MAV_CMD_COMPONENT_ARM_DISARM:
@@ -1359,8 +1375,8 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
             param1 = tell_command.p1;
             break;
 
-        case MAV_CMD_NAV_ROI:
-        case MAV_CMD_DO_SET_ROI:
+        case MAV_CMD_NAV_ROI:       // 80
+        case MAV_CMD_DO_SET_ROI:    // 201
             param1 = tell_command.p1;                        // MAV_ROI (aka roi mode) is held in wp's parameter but we actually do nothing with it because we only support pointing at a specific location provided by x,y and z parameters
             x = tell_command.lat/1.0e7f;                     // local (x), global (latitude)
             y = tell_command.lng/1.0e7f;                     // local (y), global (longitude)
@@ -1918,7 +1934,8 @@ mission_failed:
 			break;
 		
         // set gps hil sensor
-        g_gps->setHIL(packet.time_usec/1000,
+        g_gps->setHIL(GPS::FIX_3D,
+                      packet.time_usec/1000,
                       packet.lat*1.0e-7, packet.lon*1.0e-7, packet.alt*1.0e-3,
                       vel*1.0e-2, cog*1.0e-2, 0, 10);
 
@@ -1939,20 +1956,12 @@ mission_failed:
         accels.y = packet.yacc * (GRAVITY_MSS/1000.0);
         accels.z = packet.zacc * (GRAVITY_MSS/1000.0);
 
-        ins.set_gyro(gyros);
+        ins.set_gyro(0, gyros);
 
-        ins.set_accel(accels);
+        ins.set_accel(0, accels);
 
         barometer.setHIL(packet.alt*0.001f);
         compass.setHIL(packet.roll, packet.pitch, packet.yaw);
-
- #if HIL_MODE == HIL_MODE_ATTITUDE
-        // set AHRS hil sensor
-        ahrs.setHil(packet.roll,packet.pitch,packet.yaw,packet.rollspeed,
-                    packet.pitchspeed,packet.yawspeed);
- #endif
-
-
 
         break;
     }

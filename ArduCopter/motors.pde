@@ -159,25 +159,20 @@ static void init_arm_motors()
         calc_distance_and_bearing();
     }
 
-    // all I terms are invalid
-    // -----------------------
-    reset_I_all();
-
     if(did_ground_start == false) {
         did_ground_start = true;
         startup_ground(true);
     }
 
-#if HIL_MODE != HIL_MODE_ATTITUDE
     // fast baro calibration to reset ground pressure
     init_barometer(false);
-#endif
 
     // go back to normal AHRS gains
     ahrs.set_fast_gains(false);
 
     // enable gps velocity based centrefugal force compensation
     ahrs.set_correct_centrifugal(true);
+    ahrs.set_armed(true);
 
     // set hover throttle
     motors.set_mid_throttle(g.throttle_mid);
@@ -324,7 +319,7 @@ static void pre_arm_checks(bool display_failure)
 #ifndef CONFIG_ARCH_BOARD_PX4FMU_V1
     // check board voltage
     if ((g.arming_check == ARMING_CHECK_ALL) || (g.arming_check & ARMING_CHECK_VOLTAGE)) {
-        if(board_voltage() < BOARD_VOLTAGE_MIN || board_voltage() > BOARD_VOLTAGE_MAX) {
+        if(hal.analogin->board_voltage() < BOARD_VOLTAGE_MIN || hal.analogin->board_voltage() > BOARD_VOLTAGE_MAX) {
             if (display_failure) {
                 gcs_send_text_P(SEVERITY_HIGH,PSTR("PreArm: Check Board Voltage"));
             }
@@ -356,7 +351,7 @@ static void pre_arm_checks(bool display_failure)
         }
 
         // lean angle parameter check
-        if (g.angle_max < 1000 || g.angle_max > 8000) {
+    if (aparm.angle_max < 1000 || aparm.angle_max > 8000) {
             if (display_failure) {
                 gcs_send_text_P(SEVERITY_HIGH,PSTR("PreArm: Check ANGLE_MAX"));
             }
@@ -364,7 +359,7 @@ static void pre_arm_checks(bool display_failure)
         }
 
         // acro balance parameter check
-        if ((g.acro_balance_roll > g.pi_stabilize_roll.kP()) || (g.acro_balance_pitch > g.pi_stabilize_pitch.kP())) {
+        if ((g.acro_balance_roll > g.p_stabilize_roll.kP()) || (g.acro_balance_pitch > g.p_stabilize_pitch.kP())) {
             if (display_failure) {
                 gcs_send_text_P(SEVERITY_HIGH,PSTR("PreArm: ACRO_BAL_ROLL/PITCH"));
             }
@@ -473,7 +468,7 @@ static bool arm_checks(bool display_failure)
 
     // check lean angle
     if ((g.arming_check == ARMING_CHECK_ALL) || (g.arming_check & ARMING_CHECK_INS)) {
-        if (labs(ahrs.roll_sensor) > g.angle_max || labs(ahrs.pitch_sensor) > g.angle_max) {
+        if (labs(ahrs.roll_sensor) > aparm.angle_max || labs(ahrs.pitch_sensor) > aparm.angle_max) {
             if (display_failure) {
                 gcs_send_text_P(SEVERITY_HIGH,PSTR("Arm: Leaning"));
             }
@@ -514,13 +509,13 @@ static void init_disarm_motors()
 
     g.throttle_cruise.save();
 
-#if AUTOTUNE == ENABLED
+#if AUTOTUNE_ENABLED == ENABLED
     // save auto tuned parameters
-    auto_tune_save_tuning_gains_and_reset();
+    autotune_save_tuning_gains();
 #endif
 
     // we are not in the air
-    set_takeoff_complete(false);
+    set_land_complete(true);
     
     // setup fast AHRS gains to get right attitude
     ahrs.set_fast_gains(true);
@@ -533,6 +528,7 @@ static void init_disarm_motors()
 
     // disable gps velocity based centrefugal force compensation
     ahrs.set_correct_centrifugal(false);
+    ahrs.set_armed(false);
 }
 
 /*****************************************
@@ -553,7 +549,7 @@ static void servo_write(uint8_t ch, uint16_t pwm)
 {
     bool servo_ok = false;
 
-    #if (FRAME_CONFIG == QUAD_FRAME)
+    #if (FRAME_CONFIG == QUAD_FRAME || FRAME_CONFIG == COAX_FRAME)
         // Quads can use RC5 and higher as servos
         if (ch >= CH_5) servo_ok = true;
     #elif (FRAME_CONFIG == TRI_FRAME || FRAME_CONFIG == SINGLE_FRAME)

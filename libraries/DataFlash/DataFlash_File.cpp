@@ -42,7 +42,12 @@ DataFlash_File::DataFlash_File(const char *log_directory) :
     _log_directory(log_directory),
     _writebuf(NULL),
     _writebuf_size(16*1024),
+#ifdef CONFIG_ARCH_BOARD_PX4FMU_V1
+    // V1 gets IO errors with larger than 512 byte writes
+    _writebuf_chunk(512),
+#else
     _writebuf_chunk(4096),
+#endif
     _writebuf_head(0),
     _writebuf_tail(0),
     _last_write_time(0)
@@ -305,8 +310,26 @@ int16_t DataFlash_File::get_log_data(uint16_t log_num, uint16_t page, uint32_t o
         _read_fd_log_num = log_num;
     }
     uint32_t ofs = page * (uint32_t)DATAFLASH_PAGE_SIZE + offset;
+
+    /*
+      this rather strange bit of code is here to work around a bug
+      in file offsets in NuttX. Every few hundred blocks of reads
+      (starting at around 350k into a file) NuttX will get the
+      wrong offset for sequential reads. The offset it gets is
+      typically 128k earlier than it should be. It turns out that
+      calling lseek() with 0 offset and SEEK_CUR works around the
+      bug. We can remove this once we find the real bug.
+    */
+    if (ofs / 4096 != (ofs+len) / 4096) {
+        int seek_current = ::lseek(_read_fd, 0, SEEK_CUR);
+        if (seek_current != _read_offset) {
+            ::lseek(_read_fd, _read_offset, SEEK_SET);
+        }
+    }
+
     if (ofs != _read_offset) {
         ::lseek(_read_fd, ofs, SEEK_SET);
+        _read_offset = ofs;
     }
     int16_t ret = (int16_t)::read(_read_fd, data, len);
     if (ret > 0) {
@@ -426,7 +449,10 @@ void DataFlash_File::LogReadProcess(uint16_t log_num,
     _read_offset = 0;
     if (start_page != 0) {
         ::lseek(_read_fd, start_page * DATAFLASH_PAGE_SIZE, SEEK_SET);
+        _read_offset = start_page * DATAFLASH_PAGE_SIZE;
     }
+
+    uint8_t log_counter = 0;
 
     while (true) {
         uint8_t data;
@@ -455,6 +481,11 @@ void DataFlash_File::LogReadProcess(uint16_t log_num,
             case 2:
                 log_step = 0;
                 _print_log_entry(data, print_mode, port);
+                log_counter++;
+                if (log_counter == 10) {
+                    log_counter = 0;
+                    ::lseek(_read_fd, 0, SEEK_CUR);
+                }
                 break;
         }
         if (_read_offset >= (end_page+1) * DATAFLASH_PAGE_SIZE) {

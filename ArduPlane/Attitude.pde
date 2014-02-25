@@ -679,6 +679,34 @@ static void channel_output_mixer(uint8_t mixing_type, int16_t &chan1_out, int16_
     chan2_out = 1500 + v2;
 }
 
+/*
+  setup flaperon output channels
+ */
+static void flaperon_update(int8_t flap_percent)
+{
+    if (!RC_Channel_aux::function_assigned(RC_Channel_aux::k_flaperon1) ||
+        !RC_Channel_aux::function_assigned(RC_Channel_aux::k_flaperon2)) {
+        return;
+    }
+    int16_t ch1, ch2;
+    /*
+      flaperons are implemented as a mixer between aileron and a
+      percentage of flaps. Flap input can come from a manual channel
+      or from auto flaps. Note that negative manual flap percentates
+      are allowed, which give spoilerons
+     */
+    ch1 = channel_roll->radio_out;
+
+    // 1500 is used here as the neutral value for the output
+    // mixer. User can still trim the flaps on the input side using
+    // the TRIM of the flap input channel. The *5 is to take a
+    // percentage to a value from -500 to 500 for the mixer
+    ch2 = 1500 - flap_percent * 5;
+    channel_output_mixer(g.flaperon_output, ch1, ch2);
+    RC_Channel_aux::set_radio(RC_Channel_aux::k_flaperon1, ch1);
+    RC_Channel_aux::set_radio(RC_Channel_aux::k_flaperon2, ch2);
+}
+
 /*****************************************
 * Set the flight control servos based on the current calculated values
 *****************************************/
@@ -713,7 +741,6 @@ static void set_servos(void)
         // of the 2nd aileron
         RC_Channel_aux::copy_radio_in_out(RC_Channel_aux::k_aileron_with_input);
         RC_Channel_aux::copy_radio_in_out(RC_Channel_aux::k_elevator_with_input);
-        RC_Channel_aux::copy_radio_in_out(RC_Channel_aux::k_flap_auto);
 
         if (g.mix_mode == 0 && g.elevon_output == MIXING_DISABLED) {
             // set any differential spoilers to follow the elevons in
@@ -822,27 +849,39 @@ static void set_servos(void)
     }
 
     // Auto flap deployment
-    if(control_mode < FLY_BY_WIRE_B) {
-        RC_Channel_aux::copy_radio_in_out(RC_Channel_aux::k_flap_auto);
-    } else if (control_mode >= FLY_BY_WIRE_B) {
-        int16_t flapSpeedSource = 0;
+    uint8_t auto_flap_percent = 0;
+    int8_t manual_flap_percent = 0;
 
-        // FIXME: use target_airspeed in both FBW_B and g.airspeed_enabled cases - Doug?
-        if (control_mode == FLY_BY_WIRE_B) {
-            flapSpeedSource = target_airspeed_cm * 0.01;
-        } else if (airspeed.use()) {
-            flapSpeedSource = g.airspeed_cruise_cm * 0.01;
+    // work out any manual flap input
+    RC_Channel *flapin = RC_Channel::rc_channel(g.flapin_channel-1);
+    if (flapin != NULL && !failsafe.ch3_failsafe && failsafe.ch3_counter == 0) {
+        flapin->input();
+        manual_flap_percent = constrain_int16(flapin->norm_input() * 100, -100, 100);
+    }
+
+    if (auto_throttle_mode) {
+        int16_t flapSpeedSource = 0;
+        if (airspeed.use()) {
+            flapSpeedSource = target_airspeed_cm * 0.01f;
         } else {
             flapSpeedSource = aparm.throttle_cruise;
         }
         if ( g.flap_1_speed != 0 && flapSpeedSource > g.flap_1_speed) {
-            RC_Channel_aux::set_servo_out(RC_Channel_aux::k_flap_auto, 0);
-        } else if (g.flap_2_speed != 0 && flapSpeedSource > g.flap_2_speed) {
-            RC_Channel_aux::set_servo_out(RC_Channel_aux::k_flap_auto, g.flap_1_percent);
+            auto_flap_percent = 0;
+        } else if (g.flap_2_speed != 0 && flapSpeedSource <= g.flap_2_speed) {
+            auto_flap_percent = g.flap_2_percent;
         } else {
-            RC_Channel_aux::set_servo_out(RC_Channel_aux::k_flap_auto, g.flap_2_percent);
+            auto_flap_percent = g.flap_1_percent;
         }
     }
+
+    // manual flap input overrides auto flap input
+    if (abs(manual_flap_percent) > auto_flap_percent) {
+        auto_flap_percent = manual_flap_percent;
+    }
+
+    RC_Channel_aux::set_servo_out(RC_Channel_aux::k_flap_auto, auto_flap_percent);
+    RC_Channel_aux::set_servo_out(RC_Channel_aux::k_flap, manual_flap_percent);
 
     if (control_mode >= FLY_BY_WIRE_B) {
         /* only do throttle slew limiting in modes where throttle
@@ -855,6 +894,9 @@ static void set_servos(void)
         channel_rudder->radio_out   = channel_rudder->radio_in;
     }
 
+    if (g.flaperon_output != MIXING_DISABLED && g.elevon_output == MIXING_DISABLED && g.mix_mode == 0) {
+        flaperon_update(auto_flap_percent);
+    }
     if (g.vtail_output != MIXING_DISABLED) {
         channel_output_mixer(g.vtail_output, channel_pitch->radio_out, channel_rudder->radio_out);
     } else if (g.elevon_output != MIXING_DISABLED) {

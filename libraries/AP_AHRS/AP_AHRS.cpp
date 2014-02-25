@@ -116,6 +116,15 @@ const AP_Param::GroupInfo AP_AHRS::var_info[] PROGMEM = {
     // @User: Advanced
     AP_GROUPINFO("GPS_DELAY", 12, AP_AHRS, _gps_delay, 1),
 
+#if AP_AHRS_NAVEKF_AVAILABLE
+    // @Param: EKF_USE
+    // @DisplayName: Use NavEKF Kalman filter for attitude and position estimation
+    // @Description: This controls whether the NavEKF Kalman filter is used for attitude and position estimation
+    // @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("EKF_USE",  13, AP_AHRS, _ekf_use, 0),
+#endif
+
     AP_GROUPEND
 };
 
@@ -219,22 +228,27 @@ Vector2f AP_AHRS::groundspeed_vector(void)
     return Vector2f(0.0f, 0.0f);
 }
 
-/*
-  get position projected by groundspeed and heading
- */
-bool AP_AHRS::get_projected_position(struct Location &loc)
+// update_trig - recalculates _cos_roll, _cos_pitch, etc based on latest attitude
+//      should be called after _dcm_matrix is updated
+void AP_AHRS::update_trig(void)
 {
-        if (!get_position(loc)) {
-		return false;
-        }
-        location_update(loc, degrees(yaw), _gps->ground_speed_cm * 0.01 * _gps->get_lag());
-        return true;
-}
+    Vector2f yaw_vector;
+    const Matrix3f &temp = get_dcm_matrix();
 
-/*
-  get the GPS lag in seconds
- */
-float AP_AHRS::get_position_lag(void) const
-{
-    return _gps->get_lag();
+    // sin_yaw, cos_yaw
+    yaw_vector.x = temp.a.x;
+    yaw_vector.y = temp.b.x;
+    yaw_vector.normalize();
+    _sin_yaw = constrain_float(yaw_vector.y, -1.0, 1.0);
+    _cos_yaw = constrain_float(yaw_vector.x, -1.0, 1.0);
+
+    // cos_roll, cos_pitch
+    _cos_pitch = safe_sqrt(1 - (temp.c.x * temp.c.x));
+    _cos_roll = temp.c.z / _cos_pitch;
+    _cos_pitch = constrain_float(_cos_pitch, 0, 1.0);
+    _cos_roll = constrain_float(_cos_roll, -1.0, 1.0); // this relies on constrain_float() of infinity doing the right thing,which it does do in avr-libc
+
+    // sin_roll, sin_pitch
+    _sin_pitch = -temp.c.x;
+    _sin_roll = temp.c.y / _cos_pitch;
 }

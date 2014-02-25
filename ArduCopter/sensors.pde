@@ -1,8 +1,5 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-// Sensors are not available in HIL_MODE_ATTITUDE
-#if HIL_MODE != HIL_MODE_ATTITUDE
-
  #if CONFIG_SONAR == ENABLED
 static void init_sonar(void)
 {
@@ -29,6 +26,9 @@ static void init_barometer(bool full_calibration)
 static int32_t read_barometer(void)
 {
     barometer.read();
+    if (g.log_bitmask & MASK_LOG_IMU) {
+        Log_Write_Baro();
+    }
     return barometer.get_altitude() * 100.0f;
 }
 
@@ -54,7 +54,7 @@ static int16_t read_sonar(void)
 
  #if SONAR_TILT_CORRECTION == 1
     // correct alt for angle of the sonar
-    float temp = cos_pitch_x * cos_roll_x;
+    float temp = ahrs.cos_pitch() * ahrs.cos_roll();
     temp = max(temp, 0.707f);
     temp_alt = (float)temp_alt * temp;
  #endif
@@ -64,9 +64,6 @@ static int16_t read_sonar(void)
     return 0;
 #endif
 }
-
-
-#endif // HIL_MODE != HIL_MODE_ATTITUDE
 
 static void init_compass()
 {

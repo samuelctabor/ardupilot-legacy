@@ -50,12 +50,14 @@ ArduCopter/test/*
 build
 Build.ArduCopter/*
 Build.ArduPlane/*
+Build.APMrover2/*
 cmake_install.cmake
 CMakeCache.txt
 CMakeFiles
 config.mk
 dataflash.bin
 eeprom.bin
+LASTLOG.TXT
 Make.dep
 mav.log
 mav.log.raw

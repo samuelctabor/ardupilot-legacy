@@ -19,14 +19,14 @@ public:
 
     AP_InertialSensor_PX4() : 
         AP_InertialSensor(),
-        _sample_time_usec(0),
-        _last_get_sample_timestamp(0)
+        _last_get_sample_timestamp(0),
+        _sample_time_usec(0)
         {
         }
 
     /* Concrete implementation of AP_InertialSensor functions: */
     bool            update();
-    float        	get_delta_time();
+    float        	get_delta_time() const;
     float           get_gyro_drift_rate();
     bool            wait_for_sample(uint16_t timeout_ms);
     bool            healthy(void) const;

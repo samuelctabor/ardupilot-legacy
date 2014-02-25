@@ -9,6 +9,8 @@
 
 #include "RC_Channel.h"
 
+#define RC_AUX_MAX_CHANNELS 8
+
 /// @class	RC_Channel_aux
 /// @brief	Object managing one aux. RC channel (CH5-8), with information about its function
 class RC_Channel_aux : public RC_Channel {
@@ -21,6 +23,12 @@ public:
     RC_Channel_aux(uint8_t ch_out) :
         RC_Channel(ch_out)
     {
+        for (uint8_t i=0; i<RC_AUX_MAX_CHANNELS; i++) {
+            if (_aux_channels[i] == NULL) {
+                _aux_channels[i] = this;
+                break;
+            }
+        }
 		AP_Param::setup_object_defaults(this, var_info);
     }
 
@@ -31,7 +39,7 @@ public:
         k_flap                  = 2,            ///< flap
         k_flap_auto             = 3,            ///< flap automated
         k_aileron               = 4,            ///< aileron
-        k_flaperon              = 5,            ///< flaperon (flaps and aileron combined, needs two independent servos one for each wing)
+        k_unused1               = 5,            ///< unused function
         k_mount_pan             = 6,            ///< mount yaw (pan)
         k_mount_tilt            = 7,            ///< mount pitch (tilt)
         k_mount_roll            = 8,            ///< mount roll
@@ -50,6 +58,8 @@ public:
         k_rudder                = 21,            ///< secondary rudder channel
         k_sprayer_pump          = 22,            ///< crop sprayer pump channel
         k_sprayer_spinner       = 23,            ///< crop sprayer spinner channel
+        k_flaperon1             = 24,            ///< flaperon, left wing
+        k_flaperon2             = 25,            ///< flaperon, right wing
         k_nr_aux_servo_functions         ///< This must be the last enum value (only add new values _before_ this one)
     } Aux_servo_function_t;
 
@@ -86,12 +96,17 @@ public:
 						   int16_t value, int16_t angle_min, int16_t angle_max);
 
     static const struct AP_Param::GroupInfo        var_info[];
-};
 
-void update_aux_servo_function(RC_Channel_aux* rc_a = NULL, RC_Channel_aux* rc_b = NULL, 
-							   RC_Channel_aux* rc_c = NULL, RC_Channel_aux* rc_d = NULL, 
-							   RC_Channel_aux* rc_e = NULL, RC_Channel_aux* rc_f = NULL, 
-							   RC_Channel_aux* rc_g = NULL, RC_Channel_aux* rc_h = NULL);
-void enable_aux_servos();
+    // assigned and enable auxillary channels
+    static void enable_aux_servos(void);
+    
+    // prevent a channel from being used for auxillary functions
+    static void disable_aux_channel(uint8_t channel);
+
+private:
+    static uint32_t _function_mask;
+    static RC_Channel_aux *_aux_channels[RC_AUX_MAX_CHANNELS];
+    static void update_aux_servo_function(void);
+};
 
 #endif /* RC_CHANNEL_AUX_H_ */

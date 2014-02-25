@@ -86,7 +86,6 @@ def fly_RTL(mavproxy, mav):
 def fly_LOITER(mavproxy, mav, num_circles=4):
     '''loiter where we are'''
     print("Testing LOITER for %u turns" % num_circles)
-    mavproxy.send('switch 3\n')
     mavproxy.send('loiter\n')
     wait_mode(mav, 'LOITER')
 
@@ -363,7 +362,7 @@ def test_FBWB(mavproxy, mav, count=1, mode='FBWB'):
     for i in range(0,4):
         # hard left
         print("Starting turn %u" % i)
-        mavproxy.send('rc 4 1700\n')
+        mavproxy.send('rc 4 1900\n')
         if not wait_heading(mav, 360 - (90*i), accuracy=20, timeout=60):
             mavproxy.send('rc 4 1500\n')
             return False
@@ -433,9 +432,10 @@ def fly_ArduPlane(viewerip=None, map=False):
     mavproxy.expect('Received [0-9]+ parameters')
 
     # setup test parameters
-    mavproxy.send('param set SYSID_THISMAV %u\n' % random.randint(100, 200))
     mavproxy.send("param load %s/ArduPlane.parm\n" % testdir)
     mavproxy.expect('Loaded [0-9]+ parameters')
+
+    mavproxy.send("param fetch\n")
 
     # restart with new parms
     util.pexpect_close(mavproxy)

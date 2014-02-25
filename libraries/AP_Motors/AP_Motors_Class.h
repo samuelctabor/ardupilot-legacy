@@ -68,22 +68,10 @@ class AP_Motors {
 public:
 
     // Constructor
-    AP_Motors( RC_Channel* rc_roll, RC_Channel* rc_pitch, RC_Channel* rc_throttle, RC_Channel* rc_yaw, uint16_t speed_hz = AP_MOTORS_SPEED_DEFAULT);
+    AP_Motors( RC_Channel& rc_roll, RC_Channel& rc_pitch, RC_Channel& rc_throttle, RC_Channel& rc_yaw, uint16_t speed_hz = AP_MOTORS_SPEED_DEFAULT);
 
     // init
     virtual void        Init();
-
-    // set mapping from motor number to RC channel
-    void                set_motor_to_channel_map( uint8_t mot_1, uint8_t mot_2, uint8_t mot_3, uint8_t mot_4, uint8_t mot_5, uint8_t mot_6, uint8_t mot_7, uint8_t mot_8 ) {
-        _motor_to_channel_map[AP_MOTORS_MOT_1] = mot_1;
-        _motor_to_channel_map[AP_MOTORS_MOT_2] = mot_2;
-        _motor_to_channel_map[AP_MOTORS_MOT_3] = mot_3;
-        _motor_to_channel_map[AP_MOTORS_MOT_4] = mot_4;
-        _motor_to_channel_map[AP_MOTORS_MOT_5] = mot_5;
-        _motor_to_channel_map[AP_MOTORS_MOT_6] = mot_6;
-        _motor_to_channel_map[AP_MOTORS_MOT_7] = mot_7;
-        _motor_to_channel_map[AP_MOTORS_MOT_8] = mot_8;
-    }
 
     // set update rate to motors - a value in hertz
     virtual void        set_update_rate( uint16_t speed_hz ) { _speed_hz = speed_hz; };
@@ -95,7 +83,7 @@ public:
     virtual void        enable() = 0;
 
     // arm, disarm or check status status of motors
-    bool                armed() { return _flags.armed; };
+    bool                armed() const { return _flags.armed; };
     void                armed(bool arm);
 
     // set_min_throttle - sets the minimum throttle that will be sent to the engines when they're not off (i.e. to prevents issues with some motors spinning and some not at very low throttle)
@@ -103,6 +91,15 @@ public:
     // set_mid_throttle - sets the mid throttle which is close to the hover throttle of the copter
     // this is used to limit the amount that the stability patch will increase the throttle to give more room for roll, pitch and yaw control
     void                set_mid_throttle(uint16_t mid_throttle);
+
+    int16_t             throttle_min() const { return _min_throttle;}
+    int16_t             throttle_max() const { return _max_throttle;}
+
+    // set_roll, set_pitch, set_yaw, set_throttle
+    void                set_roll(int16_t roll_in) { _rc_roll.servo_out = roll_in; };                    // range -4500 ~ 4500
+    void                set_pitch(int16_t pitch_in) { _rc_pitch.servo_out = pitch_in; };                // range -4500 ~ 4500
+    void                set_yaw(int16_t yaw_in) { _rc_yaw.servo_out = yaw_in; };                        // range -4500 ~ 4500
+    void                set_throttle(int16_t throttle_in) { _rc_throttle.servo_out = throttle_in; };    // range 0 ~ 1000
 
     // output - sends commands to the motors
     void                output();
@@ -155,6 +152,9 @@ protected:
         uint8_t slow_start_low_end  : 1;    // 1 just after arming so we can ramp up the spin_when_armed value
     } _flags;
 
+    // mapping of motor number (as received from upper APM code) to RC channel output - used to account for differences between APM1 and APM2
+    static const uint8_t _motor_to_channel_map[AP_MOTORS_MAX_NUM_MOTORS] PROGMEM;
+
     // parameters
     AP_CurveInt16_Size4 _throttle_curve;        // curve used to linearize the pwm->thrust
     AP_Int8             _throttle_curve_enabled;        // enable throttle curve
@@ -163,9 +163,10 @@ protected:
     AP_Int16            _spin_when_armed;       // used to control whether the motors always spin when armed.  pwm value above radio_min 
 
     // internal variables
-    RC_Channel*         _rc_roll, *_rc_pitch, *_rc_throttle, *_rc_yaw;  // input in from users
-    uint8_t             _motor_to_channel_map[AP_MOTORS_MAX_NUM_MOTORS];        // mapping of motor number (as received from upper APM code) to RC channel output - used to account for differences between APM1 and APM2
-    int16_t             motor_out[AP_MOTORS_MAX_NUM_MOTORS];    // final output values sent to the motors
+    RC_Channel&         _rc_roll;               // roll input in from users is held in servo_out
+    RC_Channel&         _rc_pitch;              // pitch input in from users is held in servo_out
+    RC_Channel&         _rc_throttle;           // throttle input in from users is held in servo_out
+    RC_Channel&         _rc_yaw;                // yaw input in from users is held in servo_out
     uint16_t            _speed_hz;              // speed in hz to send updates to motors
     int16_t             _min_throttle;          // the minimum throttle to be sent to the motors when they're on (prevents motors stalling while flying)
     int16_t             _max_throttle;          // the maximum throttle to be sent to the motors (sometimes limited by slow start)

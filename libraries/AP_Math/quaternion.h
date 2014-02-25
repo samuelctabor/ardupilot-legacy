@@ -47,13 +47,15 @@ public:
     }
 
     // check if any elements are NAN
-    bool        is_nan(void)
+    bool        is_nan(void) const
     {
         return isnan(q1) || isnan(q2) || isnan(q3) || isnan(q4);
     }
 
     // return the rotation matrix equivalent for this quaternion
     void        rotation_matrix(Matrix3f &m) const;
+
+    void		from_rotation_matrix(const Matrix3f &m);
 
     // convert a vector from earth to body frame
     void        earth_to_body(Vector3f &v) const;
@@ -63,6 +65,9 @@ public:
 
     // create eulers from a quaternion
     void        to_euler(float *roll, float *pitch, float *yaw) const;
+
+    float length(void) const;
+    void normalize();
 
     // allow a quaternion to be used as an array, 0 indexed
     float & operator[](uint8_t i) {
