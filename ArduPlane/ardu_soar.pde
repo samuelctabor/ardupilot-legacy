@@ -122,6 +122,8 @@ ExtendedKalmanFilter ekf;
      // Compute unfiltered climb rate
      float alt = barometer.get_altitude();
      
+     float rel_alt = alt - (float)home.alt/100.0;
+     
      if (alt==last_alt) {
        return calculated_control_mode;
      }
@@ -130,9 +132,9 @@ ExtendedKalmanFilter ekf;
      // Correct for aircraft sink
      float netto_rate = read_netto_rate(climb_rate_unfilt);
      
-     if ((thermalability < 0) && ((millis()-thermal_start_time_ms) > MIN_THERMAL_TIME_MS)) {
+     if ((thermalability < McCready(rel_alt)) && ((millis()-thermal_start_time_ms) > MIN_THERMAL_TIME_MS)) {
        // Exit as soon as thermal state estimate deteriorates
-       hal.console->printf_P(PSTR("Thermal weak, reentering previous mode: W %f R %f th %f\n"),ekf.X[0],ekf.X[1],thermalability);
+       hal.console->printf_P(PSTR("Thermal weak, reentering previous mode: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,rel_alt,McCready(rel_alt));
        calculated_control_mode =  previous_control_mode;
        next_WP = prev_next_wp;    // continue to the waypoint being used before thermal mode
        cruise_start_time_ms = millis();
@@ -150,7 +152,7 @@ ExtendedKalmanFilter ekf;
          //dy += wind.y * (millis()-prev_update_time)/1000.0;
        }
        
-       if (1) {
+       if (0) {
          // Print filter info for debugging
          hal.console->printf_P(PSTR("%f %f %f "),netto_rate, dx, dy);
          
@@ -195,5 +197,26 @@ ExtendedKalmanFilter ekf;
    cosphi = (1 - phi*phi/2); // first two terms of mclaurin series for cos(phi)
    netto_rate = climb_rate + aspd*(C1 + C2/(cosphi*cosphi));  // effect of aircraft drag removed
    return netto_rate;
+ }
+ 
+ static float McCready(float alt) {
+   float XP[] = {500, 3000};
+   float YP[] = {0, 4};
+   int n = 2;
+   // Linear interpolation (without extrap)
+   if (alt<=XP[0]) { 
+     return YP[0];
+   }
+   else if (alt>=XP[n-1]){
+     return YP[n-1];
+   }
+   else {
+     for (int i=0;i<n;i++) {
+       if (alt>=XP[i]) {
+         return (((alt-XP[i]) * (YP[i+1]-YP[i]) /(XP[i+1]-XP[i])) + YP[i]);
+       }  
+     }
+   }
+   return -1.0; // never happens   
  }
  
