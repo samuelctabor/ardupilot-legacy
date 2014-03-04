@@ -25,7 +25,9 @@ LogReader::LogReader(AP_InertialSensor &_ins, AP_Baro_HIL &_baro, AP_Compass_HIL
     baro(_baro),
     compass(_compass),
     gps(_gps),
-    airspeed(_airspeed)
+    airspeed(_airspeed),
+    accel_mask(3),
+    gyro_mask(3)
 {}
 
 bool LogReader::open_log(const char *logfile)
@@ -193,6 +195,32 @@ void LogReader::process_copter(uint8_t type, uint8_t *data, uint16_t length)
     }
 }
 
+bool LogReader::set_parameter(const char *name, float value)
+{
+    enum ap_var_type var_type;
+    AP_Param *vp = AP_Param::find(name, &var_type);
+    if (vp == NULL) {
+        return false;
+    }
+    if (var_type == AP_PARAM_FLOAT) {
+        ((AP_Float *)vp)->set(value);
+        ::printf("Set %s to %f\n", name, value);
+    } else if (var_type == AP_PARAM_INT32) {
+        ((AP_Int32 *)vp)->set(value);
+        ::printf("Set %s to %d\n", name, (int)value);
+    } else if (var_type == AP_PARAM_INT16) {
+        ((AP_Int16 *)vp)->set(value);
+        ::printf("Set %s to %d\n", name, (int)value);
+    } else if (var_type == AP_PARAM_INT8) {
+        ((AP_Int8 *)vp)->set(value);
+        ::printf("Set %s to %d\n", name, (int)value);
+    } else {
+        // we don't support mavlink set on this parameter
+        return false;
+    }            
+    return true;
+}
+
 bool LogReader::update(uint8_t &type)
 {
     uint8_t hdr[3];
@@ -259,8 +287,12 @@ bool LogReader::update(uint8_t &type)
         }
         memcpy(&msg, data, sizeof(msg));
         wait_timestamp(msg.timestamp);
-        ins.set_gyro(0, Vector3f(msg.gyro_x, msg.gyro_y, msg.gyro_z));
-        ins.set_accel(0, Vector3f(msg.accel_x, msg.accel_y, msg.accel_z));
+        if (gyro_mask & 1) {
+            ins.set_gyro(0, Vector3f(msg.gyro_x, msg.gyro_y, msg.gyro_z));
+        }
+        if (accel_mask & 1) {
+            ins.set_accel(0, Vector3f(msg.accel_x, msg.accel_y, msg.accel_z));
+        }
         break;
     }
 
@@ -272,8 +304,12 @@ bool LogReader::update(uint8_t &type)
         }
         memcpy(&msg, data, sizeof(msg));
         wait_timestamp(msg.timestamp);
-        ins.set_gyro(1, Vector3f(msg.gyro_x, msg.gyro_y, msg.gyro_z));
-        ins.set_accel(1, Vector3f(msg.accel_x, msg.accel_y, msg.accel_z));
+        if (gyro_mask & 2) {
+            ins.set_gyro(1, Vector3f(msg.gyro_x, msg.gyro_y, msg.gyro_z));
+        }
+        if (accel_mask & 2) {
+            ins.set_accel(1, Vector3f(msg.accel_x, msg.accel_y, msg.accel_z));
+        }
         break;
     }
 
@@ -325,6 +361,18 @@ bool LogReader::update(uint8_t &type)
         break;
     }
 
+    case LOG_PARAMETER_MSG: {
+        struct log_Parameter msg;
+        if(sizeof(msg) != f.length) {
+            printf("Bad LOG_PARAMETER length\n");
+            exit(1);
+        }
+        memcpy(&msg, data, sizeof(msg));
+        set_parameter(msg.name, msg.value);
+        break;        
+    }
+        
+
     default:
         if (vehicle == VEHICLE_PLANE) {
             process_plane(f.type, data, f.length);
@@ -341,7 +389,7 @@ bool LogReader::update(uint8_t &type)
 
 void LogReader::wait_timestamp(uint32_t timestamp)
 {
-    hal.scheduler->stop_clock(timestamp);
+    hal.scheduler->stop_clock(timestamp*1000UL);
 }
 
 bool LogReader::wait_type(uint8_t wtype)

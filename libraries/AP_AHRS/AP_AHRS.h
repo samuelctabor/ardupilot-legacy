@@ -47,7 +47,8 @@ public:
         _cos_yaw(1.0f),
         _sin_roll(0.0f),
         _sin_pitch(0.0f),
-        _sin_yaw(0.0f)
+        _sin_yaw(0.0f),
+        _active_accel_instance(0)
     {
         // load default values from var_info table
         AP_Param::setup_object_defaults(this, var_info);
@@ -82,6 +83,10 @@ public:
     // Accessors
     void set_fly_forward(bool b) {
         _flags.fly_forward = b;
+    }
+
+    bool get_fly_forward(void) const {
+        return _flags.fly_forward;
     }
 
     void set_wind_estimation(bool b) {
@@ -127,7 +132,7 @@ public:
     }
 
     // accelerometer values in the earth frame in m/s/s
-    const Vector3f &get_accel_ef(void) const { return _accel_ef; }
+    const Vector3f &get_accel_ef(void) const { return _accel_ef[_ins.get_primary_accel()]; }
 
     // Methods
     virtual void update(void) = 0;
@@ -301,6 +306,9 @@ public:
     // with very accurate position and velocity
     virtual bool have_inertial_nav(void) const { return false; }
 
+    // return the active accelerometer instance
+    uint8_t get_active_accel_instance(void) const { return _active_accel_instance; }
+
 protected:
     // settable parameters
     AP_Float beta;
@@ -348,7 +356,7 @@ protected:
     float _gyro_drift_limit;
 
     // accelerometer values in the earth frame in m/s/s
-    Vector3f        _accel_ef;
+    Vector3f        _accel_ef[INS_MAX_INSTANCES];
 
 	// Declare filter states for HPF and LPF used by complementary
 	// filter in AP_AHRS::groundspeed_vector
@@ -362,6 +370,9 @@ protected:
     // helper trig variables
     float _cos_roll, _cos_pitch, _cos_yaw;
     float _sin_roll, _sin_pitch, _sin_yaw;
+
+    // which accelerometer instance is active
+    uint8_t _active_accel_instance;
 };
 
 #include <AP_AHRS_DCM.h>

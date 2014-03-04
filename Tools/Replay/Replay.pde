@@ -42,11 +42,18 @@
 #include <AP_InertialSensor.h>
 #include <AP_InertialNav.h>
 #include <AP_NavEKF.h>
+#include <Parameters.h>
 #include <stdio.h>
+#include <getopt.h>
+#include <errno.h>
 
 #include "LogReader.h"
 
 const AP_HAL::HAL& hal = AP_HAL_BOARD_DRIVER;
+
+AP_Param param_loader(var_info, 4096);
+
+static Parameters g;
 
 static AP_InertialSensor_HIL ins;
 static AP_Baro_HIL barometer;
@@ -74,8 +81,26 @@ static FILE *ekf2f;
 static FILE *ekf3f;
 static FILE *ekf4f;
 
+static bool done_parameters;
 static bool done_baro_init;
 static bool done_home_init;
+static uint16_t update_rate;
+
+static uint8_t num_user_parameters;
+static struct {
+    char name[17];
+    float value;
+} user_parameters[100];
+
+
+static void usage(void)
+{
+    ::printf("Options:\n");
+    ::printf(" -rRATE     set IMU rate in Hz\n");
+    ::printf(" -pNAME=VALUE set parameter NAME to VALUE\n");
+    ::printf(" -aMASK     set accel mask (1=accel1 only, 2=accel2 only, 3=both)\n");
+    ::printf(" -gMASK     set gyro mask (1=gyro1 only, 2=gyro2 only, 3=both)\n");
+}
 
 void setup()
 {
@@ -84,13 +109,64 @@ void setup()
     const char *filename = "log.bin";
     uint8_t argc;
     char * const *argv;
+    int opt;
+
     hal.util->commandline_arguments(argc, argv);
-    if (argc > 1) {
-        filename = argv[1];
+
+	while ((opt = getopt(argc, argv, "r:p:ha:g:")) != -1) {
+		switch (opt) {
+        case 'h':
+            usage();
+            exit(0);
+
+        case 'r':
+			update_rate = strtol(optarg, NULL, 0);
+            break;
+
+        case 'g':
+            LogReader.set_gyro_mask(strtol(optarg, NULL, 0));
+            break;
+
+        case 'a':
+            LogReader.set_accel_mask(strtol(optarg, NULL, 0));
+            break;
+
+        case 'p':
+            char *eq = strchr(optarg, '=');
+            if (eq == NULL) {
+                ::printf("Usage: -p NAME=VALUE\n");
+                exit(1);
+            }
+            *eq++ = 0;
+            strncpy(user_parameters[num_user_parameters].name, optarg, 16);
+            user_parameters[num_user_parameters].value = atof(eq);
+            num_user_parameters++;
+            if (num_user_parameters >= sizeof(user_parameters)/sizeof(user_parameters[0])) {
+                ::printf("Too many user parameters\n");
+                exit(1);
+            }
+            break;
+        }
+    }
+
+	argv += optind;
+	argc -= optind;
+
+    if (argc > 0) {
+        filename = argv[0];
     }
 
     hal.console->printf("Processing log %s\n", filename);
-    LogReader.open_log(filename);
+    if (update_rate != 0) {
+        hal.console->printf("Using an update rate of %u Hz\n", update_rate);
+    }
+
+    load_parameters();
+
+    if (!LogReader.open_log(filename)) {
+        perror(filename);
+        exit(1);
+    }
 
     LogReader.wait_type(LOG_GPS_MSG);
     LogReader.wait_type(LOG_IMU_MSG);
@@ -107,7 +183,21 @@ void setup()
     barometer.read();
     compass.init();
     inertial_nav.init();
-    ins.init(AP_InertialSensor::WARM_START, AP_InertialSensor::RATE_50HZ);
+    switch (update_rate) {
+    case 0:
+    case 50:
+        ins.init(AP_InertialSensor::WARM_START, AP_InertialSensor::RATE_50HZ);
+        break;
+    case 100:
+        ins.init(AP_InertialSensor::WARM_START, AP_InertialSensor::RATE_100HZ);
+        break;
+    case 200:
+        ins.init(AP_InertialSensor::WARM_START, AP_InertialSensor::RATE_200HZ);
+        break;
+    case 400:
+        ins.init(AP_InertialSensor::WARM_START, AP_InertialSensor::RATE_400HZ);
+        break;
+    }
 
     plotf = fopen("plot.dat", "w");
     plotf2 = fopen("plot2.dat", "w");
@@ -151,17 +241,42 @@ void setup()
     }
 }
 
+
+/*
+  setup user -p parameters
+ */
+static void set_user_parameters(void)
+{
+    for (uint8_t i=0; i<num_user_parameters; i++) {
+        if (!LogReader.set_parameter(user_parameters[i].name, user_parameters[i].value)) {
+            ::printf("Failed to set parameter %s to %f\n", user_parameters[i].name, user_parameters[i].value);
+            exit(1);
+        }
+    }
+}
+
 static void read_sensors(uint8_t type)
 {
+    if (!done_parameters && type != LOG_FORMAT_MSG && type != LOG_PARAMETER_MSG) {
+        done_parameters = true;
+        set_user_parameters();
+    }
     if (type == LOG_GPS_MSG) {
         g_gps->update();
         if (g_gps->status() >= GPS::GPS_OK_FIX_3D) {
             ahrs.estimate_wind();
         }
     } else if (type == LOG_IMU_MSG) {
-        ahrs.update();
-        if (ahrs.get_home().lat != 0) {
-            inertial_nav.update(ins.get_delta_time());
+        uint32_t update_delta_usec = 1e6 / update_rate;
+        uint8_t update_count = update_rate>0?update_rate/50:1;
+        for (uint8_t i=0; i<update_count; i++) {
+            ahrs.update();
+            if (ahrs.get_home().lat != 0) {
+                inertial_nav.update(ins.get_delta_time());
+            }
+            hal.scheduler->stop_clock(hal.scheduler->micros() + (i+1)*update_delta_usec);
+            ins.set_gyro(0, ins.get_gyro());
+            ins.set_accel(0, ins.get_accel());
         }
     } else if ((type == LOG_PLANE_COMPASS_MSG && LogReader.vehicle == LogReader::VEHICLE_PLANE) ||
                (type == LOG_COPTER_COMPASS_MSG && LogReader.vehicle == LogReader::VEHICLE_COPTER)) {
@@ -211,7 +326,8 @@ void loop()
             Vector3f magVar;
             float    tasVar;
 
-            ahrs.get_secondary_attitude(DCM_attitude);
+            const Matrix3f &dcm_matrix = ((AP_AHRS_DCM)ahrs).get_dcm_matrix();
+            dcm_matrix.to_euler(&DCM_attitude.x, &DCM_attitude.y, &DCM_attitude.z);
             NavEKF.getEulerAngles(ekf_euler);
             NavEKF.getVelNED(velNED);
             NavEKF.getPosNED(posNED);
@@ -222,7 +338,7 @@ void loop()
             NavEKF.getMagXYZ(magXYZ);
             NavEKF.getInnovations(velInnov, posInnov, magInnov, tasInnov);
             NavEKF.getVariances(velVar, posVar, magVar, tasVar);
-            ahrs.get_relative_position_NED(ekf_relpos);
+            NavEKF.getPosNED(ekf_relpos);
             Vector3f inav_pos = inertial_nav.get_position() * 0.01f;
             float temp = degrees(ekf_euler.z);
 

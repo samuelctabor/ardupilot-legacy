@@ -118,6 +118,12 @@
 #endif
 
 
+#if HAL_CPU_CLASS >= HAL_CPU_CLASS_150
+#define GPS2_ENABLE 1
+#else
+#define GPS2_ENABLE 0
+#endif
+
 #ifndef CONFIG_BARO
  # error "CONFIG_BARO not set"
 #endif
@@ -142,6 +148,8 @@
  #define CONFIG_INS_TYPE CONFIG_INS_HIL
  #undef  CONFIG_COMPASS
  #define CONFIG_COMPASS  AP_COMPASS_HIL
+ #undef GPS2_ENABLE
+ #define GPS2_ENABLE 0
 #endif
 
 //////////////////////////////////////////////////////////////////////////////
@@ -409,7 +417,7 @@
  # define HEAD_MAX                               45
 #endif
 #ifndef PITCH_MAX
- # define PITCH_MAX                              15
+ # define PITCH_MAX                              20
 #endif
 #ifndef PITCH_MIN
  # define PITCH_MIN                              -25
