@@ -162,6 +162,14 @@ float AP_Baro::get_altitude(void)
 	_altitude = 153.8462f * temp * (1.0f - expf(0.190259f * logf(scaling)));
 #endif
 
+	// NEW
+	//hal.console->printf_P(PSTR("%f %f %i\n"),_last_altitude,_altitude,(_last_altitude == _altitude));	
+	if (_last_altitude == _altitude) {
+        // no new information - DONT update the climb rate filter.
+        return _altitude;
+    }
+    last_altitude = _altitude;
+	
     _last_altitude_t = _last_update;
 
     // ensure the climb rate filter is updated

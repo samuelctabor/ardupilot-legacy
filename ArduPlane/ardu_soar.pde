@@ -14,8 +14,8 @@
 #include <ExtendedKalmanFilter.h>
 
 #define N 4
-#define MIN_THERMAL_TIME_MS  300000
-#define MIN_CRUISE_TIME_MS  30000
+#define MIN_THERMAL_TIME_MS  60000
+#define MIN_CRUISE_TIME_MS  120000
 #define RUN_FILTER 1
 #define THERMAL_DISTANCE_AHEAD 50.0
 #define EXPECTED_THERMALLING_SINK 0.9
@@ -68,7 +68,7 @@ ExtendedKalmanFilter ekf;
    FlightMode calculated_control_mode = current_control_mode;
    
    if( g.soar_active == 1 ) {
-     if ((read_climb_rate() > g.thermal_vspeed ) && (( millis()- cruise_start_time_ms ) > MIN_CRUISE_TIME_MS )) {  
+       if ((read_netto_rate(read_climb_rate()) > g.thermal_vspeed ) && (( millis()- cruise_start_time_ms ) > MIN_CRUISE_TIME_MS )) {  
        hal.console->printf_P(PSTR("Thermal detected, entering loiter\n"));
        previous_control_mode = current_control_mode;
        
@@ -196,6 +196,12 @@ ExtendedKalmanFilter ekf;
    phi = ahrs.roll; //approximately bank angle
    cosphi = (1 - phi*phi/2); // first two terms of mclaurin series for cos(phi)
    netto_rate = climb_rate + aspd*(C1 + C2/(cosphi*cosphi));  // effect of aircraft drag removed
+   
+   //Remove acceleration effect - needs to be tested.
+   float temp_netto = netto_rate;
+   float dVdt = SpdHgt_Controller->get_VXdot();
+   netto_rate = netto_rate + aspd*dVdt/GRAVITY_MSS;
+   hal.console->printf_P(PSTR("%f %f %f %f\n"),temp_netto,dVdt,netto_rate,barometer.get_altitude());
    return netto_rate;
  }
  
