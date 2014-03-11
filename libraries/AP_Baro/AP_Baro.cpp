@@ -168,7 +168,7 @@ float AP_Baro::get_altitude(void)
         // no new information - DONT update the climb rate filter.
         return _altitude;
     }
-    last_altitude = _altitude;
+    _last_altitude = _altitude;
 	
     _last_altitude_t = _last_update;
 

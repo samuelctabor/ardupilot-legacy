@@ -53,6 +53,7 @@ print_log_menu(void)
         PLOG(CAMERA);
         PLOG(RC);
         PLOG(SONAR);
+		PLOG(THERMAL);
  #undef PLOG
     }
 
@@ -146,6 +147,7 @@ select_logs(uint8_t argc, const Menu::arg *argv)
         TARG(CAMERA);
         TARG(RC);
         TARG(SONAR);
+		TARG(THERMAL);
  #undef TARG
     }
 
@@ -569,6 +571,14 @@ static void Log_Write_SIMSTATE()
 #endif
 }
 
+// Write a THERMAL packet
+static void Log_Write_Thermal(void)
+{   log_thermal_tuning.head1 = HEAD_BYTE1;
+    log_thermal_tuning.head2 = HEAD_BYTE2;
+    log_thermal_tuning.msgid = LOG_THERMAL_MSG;
+    DataFlash.WriteBlock(&log_thermal_tuning, sizeof(log_thermal_tuning));
+}
+
 static const struct LogStructure log_structure[] PROGMEM = {
     LOG_COMMON_STRUCTURES,
     { LOG_ATTITUDE_MSG, sizeof(log_Attitude),       
@@ -599,7 +609,10 @@ static const struct LogStructure log_structure[] PROGMEM = {
       "ARM", "IHB", "TimeMS,ArmState,ArmChecks" },
     { LOG_AIRSPEED_MSG, sizeof(log_AIRSPEED),
       "ARSP",  "Iffc",     "TimeMS,Airspeed,DiffPress,Temp" },
-    TECS_LOG_FORMAT(LOG_TECS_MSG)
+    TECS_LOG_FORMAT(LOG_TECS_MSG),
+    { LOG_THERMAL_MSG, sizeof(log_Thermal_Tuning),
+      "THML",  "IfffffffLLf",     "TimeMS,nettorate,dx,dy,x0,x1,x2,x3,lat,lng,alt" }
+ //  THML_LOG_FORMAT(LOG_THERMAL_MSG)
 };
 
 // Read the DataFlash.log memory : Packet Parser
@@ -653,6 +666,7 @@ static void Log_Write_Airspeed(void) {}
 static void Log_Write_Baro(void) {}
 static void Log_Write_AHRS2() {}
 static void Log_Write_SIMSTATE() {}
+static void Log_Write_Thermal(void) {}
 
 static int8_t process_logs(uint8_t argc, const Menu::arg *argv) {
     return 0;

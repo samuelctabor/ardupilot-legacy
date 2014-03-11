@@ -393,6 +393,22 @@ static struct {
     ch2_temp : 1500
 };
 
+// Soaring log structure
+struct PACKED log_Thermal_Tuning {
+	LOG_PACKET_HEADER;		
+	uint32_t time_ms;
+	float netto_rate;
+	float dx;
+	float dy;
+	float x0;
+	float x1;		
+	float x2;		
+	float x3;		
+	uint32_t lat;		
+	uint32_t lng;		
+	float alt;
+	} log_thermal_tuning;
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Failsafe

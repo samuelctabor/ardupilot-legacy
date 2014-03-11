@@ -242,6 +242,7 @@ void AP_TECS::_update_speed_demand(void)
 	if ((_badDescent) || (_underspeed))
 	{
 		_TAS_dem     = _TASmin;
+		hal.console->printf_P(PSTR("Warning! Aspd set to min: %u %u\n"),_badDescent,_underspeed);
 	}
 	
     // Constrain speed demand
@@ -627,7 +628,7 @@ void AP_TECS::update_pitch_throttle(int32_t hgt_dem_cm,
 	_update_height_demand();
 
     // Detect underspeed condition
-    _detect_underspeed();
+    //_detect_underspeed();
 
     // Calculate specific energy quantitiues
     _update_energies();

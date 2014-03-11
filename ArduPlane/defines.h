@@ -143,6 +143,7 @@ enum log_messages {
     LOG_COMPASS2_MSG,
     LOG_ARM_DISARM_MSG,
     LOG_AIRSPEED_MSG,
+    LOG_THERMAL_MSG,
     MAX_NUM_LOGS // always at the end
 };
 
@@ -163,6 +164,7 @@ enum log_messages {
 #define MASK_LOG_SONAR                  (1<<14)
 #define MASK_LOG_ARM_DISARM             (1<<15)
 #define MASK_LOG_WHEN_DISARMED          (1UL<<16)
+#define MASK_LOG_THERMAL                (1UL<<17)
 
 // Waypoint Modes
 // ----------------

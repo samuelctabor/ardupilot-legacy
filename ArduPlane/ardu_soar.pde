@@ -28,6 +28,10 @@
 #define INITIAL_RADIUS_COVARIANCE 2500.0
 #define INITIAL_POSITION_COVARIANCE 300.0
 
+//#define THML_LOG_FORMAT(msg) { msg, sizeof(log_Thermal_Tuning),	\
+//							   "THML",  "IfffffffLLf",     "TimeMS,nettorate,dx,dy,x0,x1,x2,x3,lat,lng,alt" }
+
+
 //gcs_send_text_P(SEVERITY_LOW, PSTR("In soar code, initialising variables"));
 
 float p[N][N] = {{INITIAL_STRENGTH_COVARIANCE, 0,                         0,                           0},
@@ -165,6 +169,21 @@ ExtendedKalmanFilter ekf;
          }
          hal.console->printf_P(PSTR("%ld %ld %f %f %f %f\n"),current_loc.lng, current_loc.lat, airspeed.get_airspeed(), alt, ahrs.roll, climb_rate_unfilt);
        }
+	   else {
+		// write log - save the data.
+                log_thermal_tuning.time_ms = millis();
+		log_thermal_tuning.netto_rate = netto_rate;
+		log_thermal_tuning.dx = dx;
+		log_thermal_tuning.dy = dy;
+		log_thermal_tuning.x0 = ekf.X[0];
+		log_thermal_tuning.x1 = ekf.X[1];
+		log_thermal_tuning.x2 = ekf.X[2];
+		log_thermal_tuning.x3 = ekf.X[3];
+		log_thermal_tuning.lat = current_loc.lat;
+		log_thermal_tuning.lng = current_loc.lng;
+		log_thermal_tuning.alt = alt;
+                Log_Write_Thermal();
+		}
        
        ekf.update(netto_rate,dx, dy);                              // update the filter
        
@@ -198,10 +217,10 @@ ExtendedKalmanFilter ekf;
    netto_rate = climb_rate + aspd*(C1 + C2/(cosphi*cosphi));  // effect of aircraft drag removed
    
    //Remove acceleration effect - needs to be tested.
-   float temp_netto = netto_rate;
-   float dVdt = SpdHgt_Controller->get_VXdot();
-   netto_rate = netto_rate + aspd*dVdt/GRAVITY_MSS;
-   hal.console->printf_P(PSTR("%f %f %f %f\n"),temp_netto,dVdt,netto_rate,barometer.get_altitude());
+   //float temp_netto = netto_rate;
+   //float dVdt = SpdHgt_Controller->get_VXdot();
+   //netto_rate = netto_rate + aspd*dVdt/GRAVITY_MSS;
+   //hal.console->printf_P(PSTR("%f %f %f %f\n"),temp_netto,dVdt,netto_rate,barometer.get_altitude());
    return netto_rate;
  }
  
