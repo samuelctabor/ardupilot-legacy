@@ -279,7 +279,8 @@ static void read_sensors(uint8_t type)
             ins.set_accel(0, ins.get_accel());
         }
     } else if ((type == LOG_PLANE_COMPASS_MSG && LogReader.vehicle == LogReader::VEHICLE_PLANE) ||
-               (type == LOG_COPTER_COMPASS_MSG && LogReader.vehicle == LogReader::VEHICLE_COPTER)) {
+               (type == LOG_COPTER_COMPASS_MSG && LogReader.vehicle == LogReader::VEHICLE_COPTER) ||
+               (type == LOG_ROVER_COMPASS_MSG && LogReader.vehicle == LogReader::VEHICLE_ROVER)) {
         compass.read();
     } else if (type == LOG_PLANE_AIRSPEED_MSG && LogReader.vehicle == LogReader::VEHICLE_PLANE) {
         ahrs.set_airspeed(&airspeed);
@@ -305,7 +306,8 @@ void loop()
         read_sensors(type);
 
         if ((type == LOG_PLANE_ATTITUDE_MSG && LogReader.vehicle == LogReader::VEHICLE_PLANE) ||
-            (type == LOG_COPTER_ATTITUDE_MSG && LogReader.vehicle == LogReader::VEHICLE_COPTER)) {
+            (type == LOG_COPTER_ATTITUDE_MSG && LogReader.vehicle == LogReader::VEHICLE_COPTER) ||
+            (type == LOG_ROVER_ATTITUDE_MSG && LogReader.vehicle == LogReader::VEHICLE_ROVER)) {
 
             Vector3f ekf_euler;
             Vector3f velNED;

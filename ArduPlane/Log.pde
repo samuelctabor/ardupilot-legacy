@@ -559,17 +559,6 @@ static void Log_Write_Airspeed(void)
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
 
-static void Log_Write_AHRS2() 
-{
-    DataFlash.Log_Write_AHRS2(ahrs);
-}
-
-static void Log_Write_SIMSTATE() 
-{
-#if CONFIG_HAL_BOARD == HAL_BOARD_AVR_SITL
-    sitl.Log_Write_SIMSTATE(DataFlash);
-#endif
-}
 
 // Write a THERMAL packet
 static void Log_Write_Thermal(void)
@@ -578,6 +567,7 @@ static void Log_Write_Thermal(void)
     log_thermal_tuning.msgid = LOG_THERMAL_MSG;
     DataFlash.WriteBlock(&log_thermal_tuning, sizeof(log_thermal_tuning));
 }
+
 
 static const struct LogStructure log_structure[] PROGMEM = {
     LOG_COMMON_STRUCTURES,
@@ -664,9 +654,8 @@ static void Log_Write_IMU() {}
 static void Log_Write_RC() {}
 static void Log_Write_Airspeed(void) {}
 static void Log_Write_Baro(void) {}
-static void Log_Write_AHRS2() {}
-static void Log_Write_SIMSTATE() {}
 static void Log_Write_Thermal(void) {}
+
 
 static int8_t process_logs(uint8_t argc, const Menu::arg *argv) {
     return 0;
