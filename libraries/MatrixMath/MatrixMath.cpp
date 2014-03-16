@@ -62,6 +62,26 @@ void MatrixMath::MatrixMult(float* A, float* B, int m, int p, int n, float* C)
 		}
 }
 
+//Matrix Multiplication Routine
+// C = A*B(transpose)
+void MatrixMath::MatrixMultTranspose(float* A, float* B, int m, int p, int n, float* C)
+{
+ // A = input matrix (m x p)
+ // B = input matrix (n x p)
+ // m = number of rows in A
+ // p = number of columns in A = number of columns in B
+ // n = number of rows in B
+ // C = output matrix = A*B (m x n)
+ int i, j, k;
+ for (i=0;i<m;i++)
+  for(j=0;j<n;j++)
+  {
+   C[n*i+j]=0;
+   for (k=0;k<p;k++)
+    C[n*i+j]= C[n*i+j]+A[p*i+k]*B[p*j+k];
+  }
+}
+
 
 //Matrix Addition Routine
 void MatrixMath::MatrixAdd(float* A, float* B, int m, int n, float* C)

@@ -16,14 +16,15 @@ class MatrixMath
 public:
 	MatrixMath();
 	//void MatrixPrint(float* A, int m, int n, char[] label);
-	void MatrixCopy(float* A, int n, int m, float* B);
-	void MatrixMult(float* A, float* B, int m, int p, int n, float* C);
-	void MatrixAdd(float* A, float* B, int m, int n, float* C);
-	void MatrixSubtract(float* A, float* B, int m, int n, float* C);
-	void MatrixTranspose(float* A, int m, int n, float* C);
-    void MatrixMultScalar(float* A, float s, int m, int n, float* C);
-	int MatrixInvert(float* A, int n);
-	void MatrixForceSymmetry(float* A, int n);
+	static void MatrixCopy(float* A, int n, int m, float* B);
+	static void MatrixMult(float* A, float* B, int m, int p, int n, float* C);
+	static void MatrixMultTranspose(float* A, float* B, int m, int p, int n, float* C);
+	static void MatrixAdd(float* A, float* B, int m, int n, float* C);
+	static void MatrixSubtract(float* A, float* B, int m, int n, float* C);
+	static void MatrixTranspose(float* A, int m, int n, float* C);
+    static void MatrixMultScalar(float* A, float s, int m, int n, float* C);
+	static int MatrixInvert(float* A, int n);
+	static void MatrixForceSymmetry(float* A, int n);
 };
 
 #endif
