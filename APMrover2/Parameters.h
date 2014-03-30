@@ -36,11 +36,16 @@ public:
         k_param_relay,
         k_param_BoardConfig,
         k_param_pivot_turn_angle,
+        k_param_rc_13,
+        k_param_rc_14,
 
         // IO pins
         k_param_rssi_pin = 20,
         k_param_battery_volt_pin,
         k_param_battery_curr_pin,
+
+        // braking
+        k_param_braking_percent = 30,
 
 
         // 110: Telemetry control
@@ -62,6 +67,7 @@ public:
         k_param_compass_enabled = 130,
         k_param_steering_learn, // unused
         k_param_NavEKF,  // Extended Kalman Filter Inertial Navigation Group
+        k_param_mission, // mission library
 
         // 140: battery controls
         k_param_battery_monitoring = 140,   // deprecated, can be deleted
@@ -137,8 +143,8 @@ public:
         //
         // 220: Waypoint data
         //
-        k_param_command_total = 220,
-        k_param_command_index,
+        k_param_command_total = 220,    // unused
+        k_param_command_index,          // unused
         k_param_waypoint_radius,
 
         //
@@ -186,6 +192,9 @@ public:
     // IO pins
     AP_Int8     rssi_pin;
 
+    // braking
+    AP_Int8     braking_percent;
+
 	// Telemetry control
 	//
 	AP_Int16    sysid_this_mav;
@@ -230,6 +239,8 @@ public:
 #endif
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
     RC_Channel_aux rc_12;
+    RC_Channel_aux rc_13;
+    RC_Channel_aux rc_14;
 #endif
 
     // Throttle
@@ -268,8 +279,6 @@ public:
     
     // Waypoints
     //
-    AP_Int8     command_total;
-    AP_Int8     command_index;
     AP_Float    waypoint_radius;
 
     // PID controllers
@@ -295,6 +304,8 @@ public:
 #endif
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
         rc_12                                   (CH_12),
+        rc_13                                   (CH_13),
+        rc_14                                   (CH_14),
 #endif
 
         // PID controller    initial P        initial I        initial D        initial imax

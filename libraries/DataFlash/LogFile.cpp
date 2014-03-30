@@ -576,6 +576,16 @@ uint16_t DataFlash_Class::StartNewLog(void)
     return ret;
 }
 
+// add new logging formats to the log. Used by libraries that want to
+// add their own log messages
+void DataFlash_Class::AddLogFormats(const struct LogStructure *structures, uint8_t num_types)
+{
+    // write new log formats
+    for (uint8_t i=0; i<num_types; i++) {
+        Log_Write_Format(&structures[i]);
+    }
+}
+
 /*
   write a structure format to the log
  */
@@ -699,9 +709,10 @@ void DataFlash_Class::Log_Write_GPS2(const GPS *gps)
 // Write an RCIN packet
 void DataFlash_Class::Log_Write_RCIN(void)
 {
+    uint32_t timestamp = hal.scheduler->millis();
     struct log_RCIN pkt = {
         LOG_PACKET_HEADER_INIT(LOG_RCIN_MSG),
-        timestamp     : hal.scheduler->millis(),
+        timestamp     : timestamp,
         chan1         : hal.rcin->read(0),
         chan2         : hal.rcin->read(1),
         chan3         : hal.rcin->read(2),
@@ -709,7 +720,13 @@ void DataFlash_Class::Log_Write_RCIN(void)
         chan5         : hal.rcin->read(4),
         chan6         : hal.rcin->read(5),
         chan7         : hal.rcin->read(6),
-        chan8         : hal.rcin->read(7)
+        chan8         : hal.rcin->read(7),
+        chan9         : hal.rcin->read(8),
+        chan10        : hal.rcin->read(9),
+        chan11        : hal.rcin->read(10),
+        chan12        : hal.rcin->read(11),
+        chan13        : hal.rcin->read(12),
+        chan14        : hal.rcin->read(13)
     };
     WriteBlock(&pkt, sizeof(pkt));
 }
@@ -941,4 +958,40 @@ void DataFlash_Class::Log_Write_EKF(AP_AHRS_NavEKF &ahrs)
     WriteBlock(&pkt4, sizeof(pkt4));
 }
 #endif
+
+// Write a command processing packet
+void DataFlash_Class::Log_Write_MavCmd(uint16_t cmd_total, const mavlink_mission_item_t& mav_cmd)
+{
+    struct log_Cmd pkt = {
+        LOG_PACKET_HEADER_INIT(LOG_CMD_MSG),
+        time_ms         : hal.scheduler->millis(),
+        command_total   : (uint16_t)cmd_total,
+        sequence        : (uint16_t)mav_cmd.seq,
+        command         : (uint16_t)mav_cmd.command,
+        param1          : (float)mav_cmd.param1,
+        param2          : (float)mav_cmd.param2,
+        param3          : (float)mav_cmd.param3,
+        param4          : (float)mav_cmd.param4,
+        latitude        : (float)mav_cmd.x,
+        longitude       : (float)mav_cmd.y,
+        altitude        : (float)mav_cmd.z
+    };
+    WriteBlock(&pkt, sizeof(pkt));
+}
+
+void DataFlash_Class::Log_Write_Radio(const mavlink_radio_t &packet) 
+{
+    struct log_Radio pkt = {
+        LOG_PACKET_HEADER_INIT(LOG_RADIO_MSG),
+        time_ms      : hal.scheduler->millis(),
+        rssi         : packet.rssi,
+        remrssi      : packet.remrssi,
+        txbuf        : packet.txbuf,
+        noise        : packet.noise,
+        remnoise     : packet.remnoise,
+        rxerrors     : packet.rxerrors,
+        fixed        : packet.fixed
+    };
+    WriteBlock(&pkt, sizeof(pkt)); 
+}
 

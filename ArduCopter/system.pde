@@ -229,12 +229,12 @@ static void init_ardupilot()
     // Do GPS init
     g_gps = &g_gps_driver;
     // GPS Initialization
-    g_gps->init(hal.uartB, GPS::GPS_ENGINE_AIRBORNE_4G);
+    g_gps->init(hal.uartB, GPS::GPS_ENGINE_AIRBORNE_4G, &DataFlash);
 
 #if GPS2_ENABLE
     if (hal.uartE != NULL) {
         g_gps2 = &g_gps2_driver;
-        g_gps2->init(hal.uartE, GPS::GPS_ENGINE_AIRBORNE_4G);
+        g_gps2->init(hal.uartE, GPS::GPS_ENGINE_AIRBORNE_4G, &DataFlash);
         g_gps2->set_secondary();
     }
 #endif
@@ -287,9 +287,8 @@ static void init_ardupilot()
     init_sonar();
 #endif
 
-    // initialize commands
-    // -------------------
-    init_commands();
+    // initialise mission library
+    mission.init();
 
     // initialise the flight mode and aux switch
     // ---------------------------

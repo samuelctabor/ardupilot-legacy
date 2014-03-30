@@ -14,6 +14,19 @@
 #include <AP_HAL_PX4.h>
 #include <AP_HAL_Empty.h>
 #include <AP_GPS.h>
+#include <DataFlash.h>
+#include <AP_InertialSensor.h>
+#include <AP_ADC.h>
+#include <GCS_MAVLink.h>
+#include <AP_Baro.h>
+#include <Filter.h>
+#include <AP_AHRS.h>
+#include <AP_Compass.h>
+#include <AP_Declination.h>
+#include <AP_Airspeed.h>
+#include <AP_Vehicle.h>
+#include <AP_ADC_AnalogSource.h>
+#include <AP_Mission.h>
 #include <AP_Math.h>
 #include <AP_Notify.h>
 #include <AP_BoardLED.h>
@@ -35,7 +48,7 @@ void setup()
 
     hal.console->println("GPS AUTO library test");
     gps = &GPS;
-    gps->init(hal.uartB, GPS::GPS_ENGINE_AIRBORNE_2G);
+    gps->init(hal.uartB, GPS::GPS_ENGINE_AIRBORNE_4G, NULL);
 
     // initialise the leds
     board_led.init();

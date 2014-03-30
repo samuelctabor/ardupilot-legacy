@@ -1,6 +1,6 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-#define THISFIRMWARE "ArduPlane V2.78b"
+#define THISFIRMWARE "ArduPlane V2.79beta1"
 /*
    Lead developer: Andrew Tridgell
  
@@ -70,6 +70,7 @@
 #include <AP_SpdHgtControl.h>
 #include <AP_TECS.h>
 #include <AP_NavEKF.h>
+#include <AP_Mission.h>     // Mission command library
 
 #include <AP_Notify.h>      // Notify library
 #include <AP_BattMonitor.h> // Battery monitor library
@@ -379,6 +380,7 @@ static bool usb_connected;
 // This is the state of the flight control system
 // There are multiple states defined such as MANUAL, FBW-A, AUTO
 static enum FlightMode control_mode  = INITIALISING;
+static enum FlightMode previous_mode = INITIALISING;
 
 // Used to maintain the state of the previous control switch position
 // This is set to 254 when we need to re-read the switch
@@ -454,9 +456,6 @@ static struct {
     uint32_t ch3_timer_ms;
 
     uint32_t last_valid_rc_ms;
-
-    // last RADIO status packet
-    uint32_t last_radio_status_remrssi_ms;
 } failsafe;
 
 
@@ -475,18 +474,6 @@ static uint8_t ground_start_count      = 5;
 // true if we have a position estimate from AHRS
 static bool have_position;
 
-////////////////////////////////////////////////////////////////////////////////
-// Location & Navigation
-////////////////////////////////////////////////////////////////////////////////
-
-// There may be two active commands in Auto mode.
-// This indicates the active navigation command by index number
-static uint8_t nav_command_index;
-// This indicates the active non-navigation command by index number
-static uint8_t non_nav_command_index;
-// This is the command type (eg navigate to waypoint) of the active navigation command
-static uint8_t nav_command_ID          = NO_COMMAND;
-static uint8_t non_nav_command_ID      = NO_COMMAND;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Airspeed
@@ -587,6 +574,8 @@ static bool auto_throttle_mode;
 // this controls throttle suppression in auto modes
 static bool throttle_suppressed;
 
+AP_SpdHgtControl::FlightStage flight_stage = AP_SpdHgtControl::FLIGHT_NORMAL;
+
 ////////////////////////////////////////////////////////////////////////////////
 // Loiter management
 ////////////////////////////////////////////////////////////////////////////////
@@ -599,6 +588,18 @@ static int32_t nav_roll_cd;
 
 // The instantaneous desired pitch angle.  Hundredths of a degree
 static int32_t nav_pitch_cd;
+
+////////////////////////////////////////////////////////////////////////////////
+// Mission library
+////////////////////////////////////////////////////////////////////////////////
+// forward declations needed for functions with : in arguments
+static bool verify_command_callback(const AP_Mission::Mission_Command &cmd);
+static bool start_command_callback(const AP_Mission::Mission_Command &cmd);
+AP_Mission mission(ahrs, 
+                   &start_command_callback, 
+                   &verify_command_callback, 
+                   &exit_mission_callback, 
+                   MISSION_START_BYTE, MISSION_END_BYTE);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Waypoint distances
@@ -655,17 +656,15 @@ static const struct Location &home = ahrs.get_home();
 // Flag for if we have g_gps lock and have set the home location in AHRS
 static bool home_is_set;
 // The location of the previous waypoint.  Used for track following and altitude ramp calculations
-static struct   Location prev_WP;
+static Location prev_WP_loc;
 // The plane's current location
 static struct   Location current_loc;
 // The location of the current/active waypoint.  Used for altitude ramp, track following and loiter calculations.
-static struct   Location next_WP;
+static Location next_WP_loc;
 // The location of the active waypoint in Guided mode.
-static struct   Location guided_WP;
-// The location structure information from the Nav command being processed
-static struct   Location next_nav_command;
-// The location structure information from the Non-Nav command being processed
-static struct   Location next_nonnav_command;
+static struct Location guided_WP_loc;
+// special purpose command used only after mission completed to return vehicle to home or rally point
+static struct AP_Mission::Mission_Command auto_rtl_command;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Altitude / Climb rate control
@@ -747,7 +746,6 @@ static const AP_Scheduler::Task scheduler_tasks[] PROGMEM = {
     { read_airspeed,          5,   1200 },
     { update_alt,             5,   3400 },
     { calc_altitude_error,    5,   1000 },
-    { update_commands,        5,   5000 },
     { obc_fs_check,           5,   1000 },
     { gcs_update,             1,   1700 },
     { gcs_data_stream_send,   1,   3000 },
@@ -770,7 +768,7 @@ static const AP_Scheduler::Task scheduler_tasks[] PROGMEM = {
 };
 
 // setup the var_info table
-AP_Param param_loader(var_info, WP_START_BYTE);
+AP_Param param_loader(var_info, MISSION_START_BYTE);
 
 void setup() {
     cliSerial = hal.console;
@@ -1067,7 +1065,7 @@ static void update_GPS_50Hz(void)
         g_gps2->update();
         if (g_gps2->last_message_time_ms() != last_gps2_reading) {
             last_gps2_reading = g_gps2->last_message_time_ms();
-            if (g.log_bitmask & MASK_LOG_GPS) {
+            if (should_log(MASK_LOG_GPS)) {
                 DataFlash.Log_Write_GPS2(g_gps2);
             }
         }
@@ -1134,7 +1132,16 @@ static void update_GPS_10Hz(void)
  */
 static void handle_auto_mode(void)
 {
-    switch(nav_command_ID) {
+    uint8_t nav_cmd_id;
+
+    // we should be either running a mission or RTLing home
+    if (mission.state() == AP_Mission::MISSION_RUNNING) {
+        nav_cmd_id = mission.get_current_nav_cmd().id;
+    }else{
+        nav_cmd_id = auto_rtl_command.id;
+    }
+
+    switch(nav_cmd_id) {
     case MAV_CMD_NAV_TAKEOFF:
         if (steer_state.hold_course_cd == -1) {
             // we don't yet have a heading to hold - just level
@@ -1373,7 +1380,7 @@ static void update_navigation()
     // distance and bearing calcs only
     switch(control_mode) {
     case AUTO:
-        verify_commands();
+        update_commands();
         break;
             
     case LOITER:
@@ -1405,6 +1412,25 @@ static void update_navigation()
     }
 }
 
+static void update_flight_stage(AP_SpdHgtControl::FlightStage fs) {
+    //if just now entering land flight stage
+    if (fs == AP_SpdHgtControl::FLIGHT_LAND_APPROACH &&
+            flight_stage != AP_SpdHgtControl::FLIGHT_LAND_APPROACH) {
+
+#if GEOFENCE_ENABLED == ENABLED 
+        if (g.fence_autoenable == 1) {
+            if (! geofence_set_enabled(false, AUTO_TOGGLED)) {
+                gcs_send_text_P(SEVERITY_HIGH, PSTR("Disable fence failed (autodisable)"));
+            } else {
+                gcs_send_text_P(SEVERITY_HIGH, PSTR("Fence disabled (autodisable)"));
+            }
+        }
+#endif
+
+    }
+    
+    flight_stage = fs;
+}
 
 static void update_alt()
 {
@@ -1416,16 +1442,16 @@ static void update_alt()
     geofence_check(true);
 
     // Update the speed & height controller states
-    if (auto_throttle_mode && !throttle_suppressed) {
-        AP_SpdHgtControl::FlightStage flight_stage = AP_SpdHgtControl::FLIGHT_NORMAL;
-        
+    if (auto_throttle_mode && !throttle_suppressed) {        
         if (control_mode==AUTO) {
             if (takeoff_complete == false) {
-                flight_stage = AP_SpdHgtControl::FLIGHT_TAKEOFF;
-            } else if (nav_command_ID == MAV_CMD_NAV_LAND && land_complete == true) {
-                flight_stage = AP_SpdHgtControl::FLIGHT_LAND_FINAL;
-            } else if (nav_command_ID == MAV_CMD_NAV_LAND) {
-                flight_stage = AP_SpdHgtControl::FLIGHT_LAND_APPROACH; 
+                update_flight_stage(AP_SpdHgtControl::FLIGHT_TAKEOFF);
+            } else if (mission.get_current_nav_cmd().id == MAV_CMD_NAV_LAND && land_complete == true) {
+                update_flight_stage(AP_SpdHgtControl::FLIGHT_LAND_FINAL);
+            } else if (mission.get_current_nav_cmd().id == MAV_CMD_NAV_LAND) {
+                update_flight_stage(AP_SpdHgtControl::FLIGHT_LAND_APPROACH); 
+            } else {
+                update_flight_stage(AP_SpdHgtControl::FLIGHT_NORMAL);
             }
         }
 

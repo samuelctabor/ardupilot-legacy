@@ -53,10 +53,12 @@
 #include <AP_NavEKF.h>
 
 #include <AP_Vehicle.h>
+#include <AP_Mission.h>
 #include <AP_Notify.h>      // Notify library
 #include <AP_BattMonitor.h> // Battery monitor library
 #include <AP_Airspeed.h>
 #include <RC_Channel.h>
+#include <AP_BoardConfig.h>
 
 // Configuration
 #include "config.h"
@@ -105,6 +107,9 @@ static struct {
     float altitude_difference;
 } nav_status;
 
+static uint32_t start_time_ms;
+
+static bool usb_connected;
 
 ////////////////////////////////////////////////////////////////////////////////
 // prototypes
@@ -187,6 +192,9 @@ static RC_Channel channel_pitch(CH_2);
 static const uint8_t num_gcs = MAVLINK_COMM_NUM_BUFFERS;
 static GCS_MAVLINK gcs[MAVLINK_COMM_NUM_BUFFERS];
 
+// board specific config
+static AP_BoardConfig BoardConfig;
+
 ////////////////////////////////////////////////////////////////////////////////
 // 3D Location vectors
 // Location structure defined in AP_Common
@@ -214,6 +222,7 @@ static const AP_Scheduler::Task scheduler_tasks[] PROGMEM = {
     { compass_accumulate,     1,   1500 },
     { barometer_accumulate,   1,    900 },
     { update_notify,          1,    100 },
+    { check_usb_mux,          5,    300 },
     { gcs_retry_deferred,     1,   1000 },
     { one_second_loop,       50,   3900 }
 };

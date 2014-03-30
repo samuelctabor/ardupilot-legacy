@@ -44,6 +44,7 @@ public:
 
     /* logging methods common to all vehicles */
     uint16_t StartNewLog(void);
+    void AddLogFormats(const struct LogStructure *structures, uint8_t num_types);
     void EnableWrites(bool enable) { _writes_enabled = enable; }
     void Log_Write_Format(const struct LogStructure *structure);
     void Log_Write_Parameter(const char *name, float value);
@@ -58,6 +59,8 @@ public:
 #if AP_AHRS_NAVEKF_AVAILABLE
     void Log_Write_EKF(AP_AHRS_NavEKF &ahrs);
 #endif
+    void Log_Write_MavCmd(uint16_t cmd_total, const mavlink_mission_item_t& mav_cmd);
+    void Log_Write_Radio(const mavlink_radio_t &packet);
     void Log_Write_Message(const char *message);
     void Log_Write_Message_P(const prog_char_t *message);
 
@@ -213,6 +216,12 @@ struct PACKED log_RCIN {
     uint16_t chan6;
     uint16_t chan7;
     uint16_t chan8;
+    uint16_t chan9;
+    uint16_t chan10;
+    uint16_t chan11;
+    uint16_t chan12;
+    uint16_t chan13;
+    uint16_t chan14;
 };
 
 struct PACKED log_RCOUT {
@@ -318,6 +327,33 @@ struct PACKED log_EKF4 {
     int16_t sqrtvarVT;
 };
 
+struct PACKED log_Cmd {
+    LOG_PACKET_HEADER;
+    uint32_t time_ms;
+    uint16_t command_total;
+    uint16_t sequence;
+    uint16_t command;
+    float param1;
+    float param2;
+    float param3;
+    float param4;
+    float latitude;
+    float longitude;
+    float altitude;
+};
+
+struct PACKED log_Radio {
+    LOG_PACKET_HEADER;
+    uint32_t time_ms;
+    uint8_t rssi;
+    uint8_t remrssi;
+    uint8_t txbuf;
+    uint8_t noise;
+    uint8_t remnoise;
+    uint16_t rxerrors;
+    uint16_t fixed;
+};
+
 #define LOG_COMMON_STRUCTURES \
     { LOG_FORMAT_MSG, sizeof(log_Format), \
       "FMT", "BBnNZ",      "Type,Length,Name,Format,Columns" },    \
@@ -334,7 +370,7 @@ struct PACKED log_EKF4 {
     { LOG_MESSAGE_MSG, sizeof(log_Message), \
       "MSG",  "Z",     "Message"}, \
     { LOG_RCIN_MSG, sizeof(log_RCIN), \
-      "RCIN",  "Ihhhhhhhh",     "TimeMS,Chan1,Chan2,Chan3,Chan4,Chan5,Chan6,Chan7,Chan8" }, \
+      "RCIN",  "Ihhhhhhhhhhhhhh",     "TimeMS,C1,C2,C3,C4,C5,C6,C7,C8,C9,C10,C11,C12,C13,C14" }, \
     { LOG_RCOUT_MSG, sizeof(log_RCOUT), \
       "RCOU",  "Ihhhhhhhh",     "TimeMS,Chan1,Chan2,Chan3,Chan4,Chan5,Chan6,Chan7,Chan8" }, \
     { LOG_BARO_MSG, sizeof(log_BARO), \
@@ -352,7 +388,13 @@ struct PACKED log_EKF4 {
     { LOG_EKF3_MSG, sizeof(log_EKF3), \
       "EKF3","Icccccchhhc","TimeMS,IVN,IVE,IVD,IPN,IPE,IPD,IMX,IMY,IMZ,IVT" }, \
     { LOG_EKF4_MSG, sizeof(log_EKF4), \
-      "EKF4","Icccccchhhc","TimeMS,SVN,SVE,SVD,SPN,SPE,SPD,SMX,SMY,SMZ,SVT" }
+      "EKF4","Icccccchhhc","TimeMS,SVN,SVE,SVD,SPN,SPE,SPD,SMX,SMY,SMZ,SVT" }, \
+    { LOG_CMD_MSG, sizeof(log_Cmd), \
+      "CMD", "IHHHfffffff","TimeMS,CTot,CNum,CId,Prm1,Prm2,Prm3,Prm4,Lat,Lng,Alt" }, \
+    { LOG_RADIO_MSG, sizeof(log_Radio), \
+      "RAD", "IBBBBBHH", "TimeMS,RSSI,RemRSSI,TxBuf,Noise,RemNoise,RxErrors,Fixed" }
+
+// message types 0 to 100 reversed for vehicle specific use
 
 // message types for common messages
 #define LOG_FORMAT_MSG	  128
@@ -372,6 +414,10 @@ struct PACKED log_EKF4 {
 #define LOG_EKF3_MSG      142
 #define LOG_EKF4_MSG      143
 #define LOG_GPS2_MSG	  144
+#define LOG_CMD_MSG       145
+#define LOG_RADIO_MSG	  146
+
+// message types 200 to 210 reversed for GPS driver use
 
 #include "DataFlash_Block.h"
 #include "DataFlash_File.h"

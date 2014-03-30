@@ -325,6 +325,9 @@ RC_Channel::pwm_to_range()
 int16_t
 RC_Channel::range_to_pwm()
 {
+    if (_high_out == _low_out) {
+        return radio_trim;
+    }
     return ((long)(servo_out - _low_out) * (long)(radio_max - radio_min)) / (long)(_high_out - _low_out);
 }
 
@@ -333,10 +336,12 @@ RC_Channel::range_to_pwm()
 float
 RC_Channel::norm_input()
 {
+    float ret;
     if(radio_in < radio_trim)
-        return _reverse * (float)(radio_in - radio_trim) / (float)(radio_trim - radio_min);
+        ret = _reverse * (float)(radio_in - radio_trim) / (float)(radio_trim - radio_min);
     else
-        return _reverse * (float)(radio_in - radio_trim) / (float)(radio_max  - radio_trim);
+        ret = _reverse * (float)(radio_in - radio_trim) / (float)(radio_max  - radio_trim);
+    return constrain_float(ret, -1.0f, 1.0f);
 }
 
 /*

@@ -65,6 +65,8 @@ static void init_rc_out()
 #endif
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
     servo_write(CH_12,  g.rc_12.radio_trim);
+    servo_write(CH_13,  g.rc_13.radio_trim);
+    servo_write(CH_14,  g.rc_14.radio_trim);
 #endif
 
     // setup PX4 to output the min throttle when safety off if arming
@@ -130,7 +132,7 @@ static void rudder_arm_check()
 
 static void read_radio()
 {
-    if (!hal.rcin->valid_channels()) {
+    if (!hal.rcin->new_input()) {
         control_failsafe(channel_throttle->radio_in);
         return;
     }

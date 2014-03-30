@@ -110,6 +110,8 @@ public:
 
         // 105: Extra parameters
         k_param_fence_retalt = 105,
+        k_param_fence_autoenable,
+        k_param_fence_ret_rally,
 
         // 110: Telemetry control
         //
@@ -154,6 +156,7 @@ public:
         k_param_airspeed,  // AP_Airspeed parameters
         k_param_curr_amp_offset,
         k_param_NavEKF,  // Extended Kalman Filter Inertial Navigation Group
+        k_param_mission, // mission library
 
         //
         // 150: Navigation parameters
@@ -217,6 +220,8 @@ public:
         k_param_fs_batt_mah,
         k_param_short_fs_timeout,
         k_param_long_fs_timeout,
+        k_param_rc_13,
+        k_param_rc_14,
 
         //
         // 200: Feed-forward gains
@@ -242,8 +247,8 @@ public:
         // 220: Waypoint data
         //
         k_param_waypoint_mode = 220,
-        k_param_command_total,
-        k_param_command_index,
+        k_param_command_total,  // unused
+        k_param_command_index,  // unused
         k_param_waypoint_radius,
         k_param_loiter_radius,
         k_param_fence_action,
@@ -330,8 +335,6 @@ public:
     // Waypoints
     //
     AP_Int8 waypoint_mode;
-    AP_Int8 command_total;
-    AP_Int8 command_index;
     AP_Int16 waypoint_radius;
     AP_Int16 waypoint_max_radius;
     AP_Int16 loiter_radius;
@@ -343,6 +346,8 @@ public:
     AP_Int16 fence_minalt;    // meters
     AP_Int16 fence_maxalt;    // meters
     AP_Int16 fence_retalt;    // meters
+    AP_Int8 fence_autoenable;
+    AP_Int8 fence_ret_rally;
 #endif
 
     AP_Int8 rally_total;
@@ -454,6 +459,8 @@ public:
 #endif
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
     RC_Channel_aux rc_12;
+    RC_Channel_aux rc_13;
+    RC_Channel_aux rc_14;
 #endif
     uint8_t _dummy;
 
@@ -477,6 +484,8 @@ public:
 #endif
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
         rc_12                                   (CH_12),
+        rc_13                                   (CH_13),
+        rc_14                                   (CH_14),
 #endif
         _dummy(0)
         {}

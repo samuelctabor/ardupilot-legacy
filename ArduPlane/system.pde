@@ -181,12 +181,12 @@ static void init_ardupilot()
 	// Do GPS init
 	g_gps = &g_gps_driver;
     // GPS Initialization
-    g_gps->init(hal.uartB, GPS::GPS_ENGINE_AIRBORNE_4G);
+    g_gps->init(hal.uartB, GPS::GPS_ENGINE_AIRBORNE_4G, &DataFlash);
 
 #if GPS2_ENABLE
     if (hal.uartE != NULL) {
         g_gps2 = &g_gps2_driver;
-        g_gps2->init(hal.uartE, GPS::GPS_ENGINE_AIRBORNE_4G);
+        g_gps2->init(hal.uartE, GPS::GPS_ENGINE_AIRBORNE_4G, &DataFlash);
         g_gps2->set_secondary();
     }
 #endif
@@ -268,9 +268,8 @@ static void startup_ground(void)
     // ------------------------------------
     //save_EEPROM_groundstart();
 
-    // initialize commands
-    // -------------------
-    init_commands();
+    // initialise mission library
+    mission.init();
 
     // Makes the servos wiggle - 3 times signals ready to fly
     // -----------------------
@@ -300,6 +299,10 @@ static void startup_ground(void)
     gcs_send_text_P(SEVERITY_LOW,PSTR("\n\n Ready to FLY."));
 }
 
+static enum FlightMode get_previous_mode() {
+    return previous_mode; 
+}
+
 static void set_mode(enum FlightMode mode)
 {
     if(control_mode == mode) {
@@ -309,6 +312,11 @@ static void set_mode(enum FlightMode mode)
     if(g.auto_trim > 0 && control_mode == MANUAL)
         trim_control_surfaces();
 
+    // perform any cleanup required for prev flight mode
+    exit_mode(control_mode);
+
+    // set mode
+    previous_mode = control_mode;
     control_mode = mode;
 
     switch(control_mode)
@@ -337,16 +345,21 @@ static void set_mode(enum FlightMode mode)
 
     case CIRCLE:
         // the altitude to circle at is taken from the current altitude
-        next_WP.alt = current_loc.alt;
+        next_WP_loc.alt = current_loc.alt;
         break;
 
     case AUTO:
-        prev_WP = current_loc;
-        update_auto();
+        prev_WP_loc = current_loc;
+        // start the mission. Note that we use resume(), not start(),
+        // as the correct behaviour for plane when entering auto is to
+        // continue the mission. If the pilot wants to restart the
+        // mission they need to either use RST_MISSION_CH or change
+        // waypoint number to 0
+        mission.resume();
         break;
 
     case RTL:
-        prev_WP = current_loc;
+        prev_WP_loc = current_loc;
         do_RTL();
         break;
 
@@ -360,7 +373,7 @@ static void set_mode(enum FlightMode mode)
         break;
 
     default:
-        prev_WP = current_loc;
+        prev_WP_loc = current_loc;
         do_RTL();
         break;
     }
@@ -384,6 +397,17 @@ static void set_mode(enum FlightMode mode)
     yawController.reset_I();    
 }
 
+// exit_mode - perform any cleanup required when leaving a flight mode
+static void exit_mode(enum FlightMode mode)
+{
+    // stop mission when we leave auto
+    if (mode == AUTO) {
+        if (mission.state() == AP_Mission::MISSION_RUNNING) {
+            mission.stop();
+        }
+    }
+}
+
 static void check_long_failsafe()
 {
     uint32_t tnow = millis();
@@ -401,8 +425,8 @@ static void check_long_failsafe()
                    (tnow - failsafe.last_heartbeat_ms) > g.long_fs_timeout*1000) {
             failsafe_long_on_event(FAILSAFE_GCS);
         } else if (g.gcs_heartbeat_fs_enabled == GCS_FAILSAFE_HB_RSSI && 
-                   failsafe.last_radio_status_remrssi_ms != 0 &&
-                   (tnow - failsafe.last_radio_status_remrssi_ms) > g.long_fs_timeout*1000) {
+                   gcs[0].last_radio_status_remrssi_ms != 0 &&
+                   (tnow - gcs[0].last_radio_status_remrssi_ms) > g.long_fs_timeout*1000) {
             failsafe_long_on_event(FAILSAFE_GCS);
         }
     } else {

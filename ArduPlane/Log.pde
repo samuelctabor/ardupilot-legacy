@@ -229,33 +229,12 @@ static void Log_Write_Performance()
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
 
-struct PACKED log_Cmd {
-    LOG_PACKET_HEADER;
-    uint8_t command_total;
-    uint8_t command_number;
-    uint8_t waypoint_id;
-    uint8_t waypoint_options;
-    uint8_t waypoint_param1;
-    int32_t waypoint_altitude;
-    int32_t waypoint_latitude;
-    int32_t waypoint_longitude;
-};
-
-// Write a command processing packet. Total length : 19 bytes
-static void Log_Write_Cmd(uint8_t num, const struct Location *wp)
+// Write a mission command. Total length : 36 bytes
+static void Log_Write_Cmd(const AP_Mission::Mission_Command &cmd)
 {
-    struct log_Cmd pkt = {
-        LOG_PACKET_HEADER_INIT(LOG_CMD_MSG),
-        command_total       : g.command_total,
-        command_number      : num,
-        waypoint_id         : wp->id,
-        waypoint_options    : wp->options,
-        waypoint_param1     : wp->p1,
-        waypoint_altitude   : wp->alt,
-        waypoint_latitude   : wp->lat,
-        waypoint_longitude  : wp->lng
-    };
-    DataFlash.WriteBlock(&pkt, sizeof(pkt));
+    mavlink_mission_item_t mav_cmd = {};
+    AP_Mission::mission_cmd_to_mavlink(cmd,mav_cmd);
+    DataFlash.Log_Write_MavCmd(mission.num_commands(),mav_cmd);
 }
 
 struct PACKED log_Camera {
@@ -292,7 +271,7 @@ static void Log_Write_Camera()
 struct PACKED log_Startup {
     LOG_PACKET_HEADER;
     uint8_t startup_type;
-    uint8_t command_total;
+    uint16_t command_total;
 };
 
 static void Log_Write_Startup(uint8_t type)
@@ -300,15 +279,16 @@ static void Log_Write_Startup(uint8_t type)
     struct log_Startup pkt = {
         LOG_PACKET_HEADER_INIT(LOG_STARTUP_MSG),
         startup_type    : type,
-        command_total   : g.command_total
+        command_total   : mission.num_commands()
     };
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
 
     // write all commands to the dataflash as well
-    struct Location cmd;
-    for (uint8_t i = 0; i <= g.command_total; i++) {
-        cmd = get_cmd_with_index(i);
-        Log_Write_Cmd(i, &cmd);
+    AP_Mission::Mission_Command cmd;
+    for (uint16_t i = 0; i < mission.num_commands(); i++) {
+        if (mission.read_cmd_from_storage(i,cmd)) {
+            Log_Write_Cmd(cmd);
+        }
     }
 }
 
@@ -575,12 +555,10 @@ static const struct LogStructure log_structure[] PROGMEM = {
       "ATT", "IccCCC",        "TimeMS,Roll,Pitch,Yaw,ErrorRP,ErrorYaw" },
     { LOG_PERFORMANCE_MSG, sizeof(log_Performance), 
       "PM",  "IHIhhhBH", "LTime,MLC,gDt,GDx,GDy,GDz,I2CErr,INSErr" },
-    { LOG_CMD_MSG, sizeof(log_Cmd),                 
-      "CMD", "BBBBBeLL",   "CTot,CNum,CId,COpt,Prm1,Alt,Lat,Lng" },
     { LOG_CAMERA_MSG, sizeof(log_Camera),                 
       "CAM", "IHLLeccC",   "GPSTime,GPSWeek,Lat,Lng,Alt,Roll,Pitch,Yaw" },
     { LOG_STARTUP_MSG, sizeof(log_Startup),         
-      "STRT", "BB",         "SType,CTot" },
+      "STRT", "BH",         "SType,CTot" },
     { LOG_CTUN_MSG, sizeof(log_Control_Tuning),     
       "CTUN", "Icccchhf",    "TimeMS,NavRoll,Roll,NavPitch,Pitch,ThrOut,RdrOut,AccY" },
     { LOG_NTUN_MSG, sizeof(log_Nav_Tuning),         
@@ -639,11 +617,11 @@ static void start_logging()
 
 // dummy functions
 static void Log_Write_Startup(uint8_t type) {}
-static void Log_Write_Cmd(uint8_t num, const struct Location *wp) {}
 static void Log_Write_Current() {}
 static void Log_Write_Nav_Tuning() {}
 static void Log_Write_TECS_Tuning() {}
 static void Log_Write_Performance() {}
+static void Log_Write_Cmd(const AP_Mission::Mission_Command &cmd) {}
 static void Log_Write_Attitude() {}
 static void Log_Write_Control_Tuning() {}
 static void Log_Write_Camera() {}

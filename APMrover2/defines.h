@@ -61,15 +61,6 @@ enum mode {
 #define FAILSAFE_EVENT_GCS      (1<<1)
 #define FAILSAFE_EVENT_RC       (1<<2)
 
-// Commands - Note that APM now uses a subset of the MAVLink protocol commands.  See enum MAV_CMD in the GCS_Mavlink library
-#define CMD_BLANK 0 // there is no command stored in the mem location requested
-#define NO_COMMAND 0
-#define WAIT_COMMAND 255
-
-// Command/Waypoint/Location Options Bitmask
-//--------------------
-#define MASK_OPTIONS_RELATIVE_ALT	(1<<0)		// 1 = Relative altitude
-
 //repeating events
 #define NO_REPEAT 0
 #define CH_5_TOGGLE 1
@@ -85,7 +76,6 @@ enum mode {
 #define LOG_CTUN_MSG	        0x01
 #define LOG_NTUN_MSG    		0x02
 #define LOG_PERFORMANCE_MSG		0x03
-#define LOG_CMD_MSG			    0x04
 #define LOG_CURRENT_MSG 		0x05
 #define LOG_STARTUP_MSG 		0x06
 #define LOG_SONAR_MSG 		    0x07
@@ -152,12 +142,9 @@ enum mode {
 
 
 // EEPROM addresses
-#define EEPROM_MAX_ADDR		4096
-// parameters get the first 1KiB of EEPROM, remainder is for waypoints
-#define WP_START_BYTE 0x500 // where in memory home WP is stored + all other WP
-#define WP_SIZE 15
-
-#define MAX_WAYPOINTS  ((EEPROM_MAX_ADDR - WP_START_BYTE) / WP_SIZE) - 1 // - 1 to be safe
+// parameters get the first 1KiB of EEPROM, remainder is for mission commands
+#define MISSION_START_BYTE  0x500
+#define MISSION_END_BYTE    HAL_STORAGE_SIZE_AVAILABLE
 
 // convert a boolean (0 or 1) to a sign for multiplying (0 maps to 1, 1 maps to -1)
 #define BOOL_TO_SIGN(bvalue) ((bvalue)?-1:1)

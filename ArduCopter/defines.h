@@ -161,12 +161,6 @@
 #define RC_FEEL_RP_CRISP            75
 #define RC_FEEL_RP_VERY_CRISP       100
 
-// Commands - Note that APM now uses a subset of the MAVLink protocol
-// commands.  See enum MAV_CMD in the GCS_Mavlink library
-#define CMD_BLANK 0 // there is no command stored in the mem location
-                    // requested
-#define NO_COMMAND 0
-
 // Yaw behaviours during missions - possible values for WP_YAW_BEHAVIOR parameter
 #define WP_YAW_BEHAVIOR_NONE                          0   // auto pilot will never control yaw during missions or rtl (except for DO_CONDITIONAL_YAW command received)
 #define WP_YAW_BEHAVIOR_LOOK_AT_NEXT_WP               1   // auto pilot will face next waypoint or home during rtl
@@ -175,7 +169,6 @@
 
 
 // Waypoint options
-#define MASK_OPTIONS_RELATIVE_ALT               1
 #define WP_OPTION_ALT_CHANGE                    2
 #define WP_OPTION_YAW                           4
 #define WP_OPTION_ALT_REQUIRED                  8
@@ -190,7 +183,8 @@ enum AutoMode {
     Auto_WP,
     Auto_Land,
     Auto_RTL,
-    Auto_Circle
+    Auto_Circle,
+    Auto_Spline
 };
 
 // RTL states
@@ -222,7 +216,6 @@ enum FlipState {
 #define LOG_CONTROL_TUNING_MSG          0x04
 #define LOG_NAV_TUNING_MSG              0x05
 #define LOG_PERFORMANCE_MSG             0x06
-#define LOG_CMD_MSG                     0x08
 #define LOG_CURRENT_MSG                 0x09
 #define LOG_STARTUP_MSG                 0x0A
 #define LOG_OPTFLOW_MSG                 0x0C
@@ -240,8 +233,6 @@ enum FlipState {
 #define LOG_AUTOTUNE_MSG                0x19
 #define LOG_AUTOTUNEDETAILS_MSG         0x1A
 #define LOG_COMPASS2_MSG                0x1B
-#define LOG_INDEX_MSG                   0xF0
-#define MAX_NUM_LOGS                    50
 
 #define MASK_LOG_ATTITUDE_FAST          (1<<0)
 #define MASK_LOG_ATTITUDE_MED           (1<<1)
@@ -303,24 +294,14 @@ enum FlipState {
 // Centi-degrees to radians
 #define DEGX100 5729.57795f
 
-
-// EEPROM addresses
-#define EEPROM_MAX_ADDR         4096
-// parameters get the first 1536 bytes of EEPROM, remainder is for waypoints
-#define WP_START_BYTE 0x600 // where in memory home WP is stored + all other
-                            // WP
-#define WP_SIZE 15
-
 // fence points are stored at the end of the EEPROM
 #define MAX_FENCEPOINTS 6
 #define FENCE_WP_SIZE sizeof(Vector2l)
-#define FENCE_START_BYTE (EEPROM_MAX_ADDR-(MAX_FENCEPOINTS*FENCE_WP_SIZE))
+#define FENCE_START_BYTE (HAL_STORAGE_SIZE_AVAILABLE-(MAX_FENCEPOINTS*FENCE_WP_SIZE))
 
-#define MAX_WAYPOINTS  ((FENCE_START_BYTE - WP_START_BYTE) / WP_SIZE) - 1 // -
-                                                                          // 1
-                                                                          // to
-                                                                          // be
-                                                                          // safe
+// parameters get the first 1536 bytes of EEPROM, mission commands are stored between these params and the fence points
+#define MISSION_START_BYTE   0x600
+#define MISSION_END_BYTE     (FENCE_START_BYTE-1)
 
 // mark a function as not to be inlined
 #define NOINLINE __attribute__((noinline))

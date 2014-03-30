@@ -71,6 +71,7 @@
 #include <AP_InertialSensor.h> // Inertial Sensor (uncalibated IMU) Library
 #include <AP_AHRS.h>         // ArduPilot Mega DCM Library
 #include <AP_NavEKF.h>
+#include <AP_Mission.h>     // Mission command library
 #include <PID.h>            // PID library
 #include <RC_Channel.h>     // RC Channel Library
 #include <AP_RangeFinder.h>	// Range finder library
@@ -125,7 +126,7 @@ const AP_HAL::HAL& hal = AP_HAL_BOARD_DRIVER;
 // must be the first AP_Param variable declared to ensure its
 // constructor runs before the constructors of the other AP_Param
 // variables
-AP_Param param_loader(var_info, WP_START_BYTE);
+AP_Param param_loader(var_info, MISSION_START_BYTE);
 
 ////////////////////////////////////////////////////////////////////////////////
 // the rate we run the main loop at
@@ -298,6 +299,15 @@ static AP_Navigation *nav_controller = &L1_controller;
 // steering controller
 static AP_SteerController steerController(ahrs);
 
+////////////////////////////////////////////////////////////////////////////////
+// Mission library
+// forward declaration to avoid compiler errors
+////////////////////////////////////////////////////////////////////////////////
+static bool start_command(const AP_Mission::Mission_Command& cmd);
+static bool verify_command(const AP_Mission::Mission_Command& cmd);
+static void exit_mission();
+AP_Mission mission(ahrs, &start_command, &verify_command, &exit_mission, MISSION_START_BYTE, MISSION_END_BYTE);
+
 #if CONFIG_HAL_BOARD == HAL_BOARD_AVR_SITL
 SITL sitl;
 #endif
@@ -421,14 +431,6 @@ static bool have_position;
 
 static bool rtl_complete = false;
 
-// There may be two active commands in Auto mode.  
-// This indicates the active navigation command by index number
-static uint8_t	nav_command_index;					
-// This indicates the active non-navigation command by index number
-static uint8_t	non_nav_command_index;				
-// This is the command type (eg navigate to waypoint) of the active navigation command
-static uint8_t	nav_command_ID		= NO_COMMAND;	
-static uint8_t	non_nav_command_ID	= NO_COMMAND;	
 
 // ground speed error in m/s
 static float	groundspeed_error;	
@@ -471,9 +473,6 @@ static int16_t throttle_last = 0, throttle = 500;
 // When CH7 goes LOW PWM from HIGH PWM, this value will have been set true
 // This allows advanced functionality to know when to execute
 static bool ch7_flag;
-// This register tracks the current Mission Command index when writing
-// a mission using CH7 in flight
-static int8_t CH7_wp_index;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Battery Sensors
@@ -503,8 +502,6 @@ static int32_t 	condition_value;
 // A starting value used to check the status of a conditional command.
 // For example in a delay command the condition_start records that start time for the delay
 static int32_t 	condition_start;
-// A value used in condition commands.  For example the rate at which to change altitude.
-static int16_t 		condition_rate;
 
 ////////////////////////////////////////////////////////////////////////////////
 // 3D Location vectors
@@ -520,11 +517,6 @@ static struct 	Location prev_WP;
 static struct 	Location next_WP;
 // The location of the active waypoint in Guided mode.
 static struct  	Location guided_WP;
-
-// The location structure information from the Nav command being processed
-static struct 	Location next_nav_command;	
-// The location structure information from the Non-Nav command being processed
-static struct 	Location next_nonnav_command;
 
 ////////////////////////////////////////////////////////////////////////////////
 // IMU variables
@@ -832,7 +824,7 @@ static void update_GPS_50Hz(void)
         g_gps2->update();
         if (g_gps2->last_message_time_ms() != last_gps2_reading) {
             last_gps2_reading = g_gps2->last_message_time_ms();
-            if (g.log_bitmask & MASK_LOG_GPS) {
+            if (should_log(MASK_LOG_GPS)) {
                 DataFlash.Log_Write_GPS2(g_gps2);
             }
         }
@@ -967,7 +959,7 @@ static void update_navigation()
         break;
 
     case AUTO:
-		verify_commands();
+		mission.update();
         break;
 
     case RTL:

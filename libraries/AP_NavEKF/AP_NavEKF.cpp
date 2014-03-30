@@ -15,8 +15,75 @@
 #include "AP_NavEKF.h"
 #include <AP_AHRS.h>
 #include <AP_Param.h>
+#include <AP_Vehicle.h>
 
 #include <stdio.h>
+
+/*
+  parameter defaults for different types of vehicle. The
+  APM_BUILD_DIRECTORY is taken from the main vehicle directory name
+  where the code is built. Note that this trick won't work for arduino
+  builds on APM2, but NavEKF doesn't run on APM2, so that's OK
+ */
+#if APM_BUILD_TYPE(APM_BUILD_ArduCopter)
+// copter defaults
+#define VELNE_NOISE_DEFAULT     0.5f
+#define VELD_NOISE_DEFAULT      0.7f
+#define POSNE_NOISE_DEFAULT     0.5f
+#define ALT_NOISE_DEFAULT       1.0f
+#define MAG_NOISE_DEFAULT       0.05f
+#define GYRO_PNOISE_DEFAULT     0.015f
+#define ACC_PNOISE_DEFAULT      0.25f
+#define GBIAS_PNOISE_DEFAULT    1E-07f
+#define ABIAS_PNOISE_DEFAULT    0.0002f
+#define MAGE_PNOISE_DEFAULT     0.0003f
+#define MAGB_PNOISE_DEFAULT     0.0003f
+#define VEL_GATE_DEFAULT        5
+#define POS_GATE_DEFAULT        5
+#define HGT_GATE_DEFAULT        5
+#define MAG_GATE_DEFAULT        3
+#define MAG_CAL_DEFAULT         1
+
+#elif APM_BUILD_TYPE(APM_BUILD_APMrover2)
+// rover defaults
+#define VELNE_NOISE_DEFAULT     0.5f
+#define VELD_NOISE_DEFAULT      0.7f
+#define POSNE_NOISE_DEFAULT     0.5f
+#define ALT_NOISE_DEFAULT       1.0f
+#define MAG_NOISE_DEFAULT       0.05f
+#define GYRO_PNOISE_DEFAULT     0.015f
+#define ACC_PNOISE_DEFAULT      0.25f
+#define GBIAS_PNOISE_DEFAULT    1E-07f
+#define ABIAS_PNOISE_DEFAULT    0.0002f
+#define MAGE_PNOISE_DEFAULT     0.0003f
+#define MAGB_PNOISE_DEFAULT     0.0003f
+#define VEL_GATE_DEFAULT        5
+#define POS_GATE_DEFAULT        5
+#define HGT_GATE_DEFAULT        5
+#define MAG_GATE_DEFAULT        3
+#define MAG_CAL_DEFAULT         1
+
+#else
+// generic defaults (and for plane)
+#define VELNE_NOISE_DEFAULT     0.3f
+#define VELD_NOISE_DEFAULT      0.5f
+#define POSNE_NOISE_DEFAULT     0.5f
+#define ALT_NOISE_DEFAULT       0.5f
+#define MAG_NOISE_DEFAULT       0.05f
+#define GYRO_PNOISE_DEFAULT     0.015f
+#define ACC_PNOISE_DEFAULT      0.25f
+#define GBIAS_PNOISE_DEFAULT    1E-07f
+#define ABIAS_PNOISE_DEFAULT    0.0002f
+#define MAGE_PNOISE_DEFAULT     0.0003f
+#define MAGB_PNOISE_DEFAULT     0.0003f
+#define VEL_GATE_DEFAULT        5
+#define POS_GATE_DEFAULT        10
+#define HGT_GATE_DEFAULT        10
+#define MAG_GATE_DEFAULT        3
+#define MAG_CAL_DEFAULT         0
+
+#endif // APM_BUILD_DIRECTORY
+
 
 extern const AP_HAL::HAL& hal;
 
@@ -31,7 +98,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 0.05 - 5.0
     // @Increment: 0.05
     // @User: advanced
-    AP_GROUPINFO("VELNE_NOISE",    0, NavEKF, _gpsHorizVelNoise, 0.30f),
+    AP_GROUPINFO("VELNE_NOISE",    0, NavEKF, _gpsHorizVelNoise, VELNE_NOISE_DEFAULT),
 
     // @Param: VELD_NOISE
     // @DisplayName: GPS vertical velocity measurement noise (m/s)
@@ -39,7 +106,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 0.05 - 5.0
     // @Increment: 0.05
     // @User: advanced
-    AP_GROUPINFO("VELD_NOISE",    1, NavEKF, _gpsVertVelNoise, 0.30f),
+    AP_GROUPINFO("VELD_NOISE",    1, NavEKF, _gpsVertVelNoise, VELD_NOISE_DEFAULT),
 
     // @Param: POSNE_NOISE
     // @DisplayName: GPS horizontal position measurement noise (m)
@@ -47,7 +114,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 0.1 - 10.0
     // @Increment: 0.1
     // @User: advanced
-    AP_GROUPINFO("POSNE_NOISE",    2, NavEKF, _gpsHorizPosNoise, 0.50f),
+    AP_GROUPINFO("POSNE_NOISE",    2, NavEKF, _gpsHorizPosNoise, POSNE_NOISE_DEFAULT),
 
     // @Param: ALT_NOISE
     // @DisplayName: Altitude measurement noise (m)
@@ -55,7 +122,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 0.1 - 10.0
     // @Increment: 0.1
     // @User: advanced
-    AP_GROUPINFO("ALT_NOISE",    3, NavEKF, _baroAltNoise, 0.50f),
+    AP_GROUPINFO("ALT_NOISE",    3, NavEKF, _baroAltNoise, ALT_NOISE_DEFAULT),
 
     // @Param: MAG_NOISE
     // @DisplayName: Magntometer measurement noise (Gauss)
@@ -63,7 +130,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 0.01 - 0.5
     // @Increment: 0.01
     // @User: advanced
-    AP_GROUPINFO("MAG_NOISE",    4, NavEKF, _magNoise, 0.05f),
+    AP_GROUPINFO("MAG_NOISE",    4, NavEKF, _magNoise, MAG_NOISE_DEFAULT),
 
     // @Param: EAS_NOISE
     // @DisplayName: Equivalent airspeed measurement noise (m/s)
@@ -95,7 +162,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 0.001 - 0.05
     // @Increment: 0.001
     // @User: advanced
-    AP_GROUPINFO("GYRO_PNOISE",    8, NavEKF, _gyrNoise, 0.015f),
+    AP_GROUPINFO("GYRO_PNOISE",    8, NavEKF, _gyrNoise, GYRO_PNOISE_DEFAULT),
 
     // @Param: ACC_PNOISE
     // @DisplayName: Accelerometer noise (m/s^2)
@@ -103,35 +170,35 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 0.05 - 1.0    AP_Float _gpsNEVelVarAccScale;  // scale factor applied to NE velocity measurement variance due to Vdot
     // @Increment: 0.01
     // @User: advanced
-    AP_GROUPINFO("ACC_PNOISE",    9, NavEKF, _accNoise, 0.25f),
+    AP_GROUPINFO("ACC_PNOISE",    9, NavEKF, _accNoise, ACC_PNOISE_DEFAULT),
 
     // @Param: GBIAS_PNOISE
     // @DisplayName: Rate gyro bias state process noise (rad/s)
     // @Description: This noise controls the growth of gyro bias state error estimates. Increasing it makes rate gyro bias estimation faster and noisier.
     // @Range: 0.0000001 - 0.00001
     // @User: advanced
-    AP_GROUPINFO("GBIAS_PNOISE",    10, NavEKF, _gyroBiasProcessNoise, 1.0e-7f),
+    AP_GROUPINFO("GBIAS_PNOISE",    10, NavEKF, _gyroBiasProcessNoise, GBIAS_PNOISE_DEFAULT),
 
     // @Param: ABIAS_PNOISE
     // @DisplayName: Accelerometer bias state process noise (m/s^2)
     // @Description: This noise controls the growth of the vertical acelerometer bias state error estimate. Increasing it makes accelerometer bias estimation faster and noisier.
-    // @Range: 0.0001 - 0.01
+    // @Range: 0.0002 - 0.001
     // @User: advanced
-    AP_GROUPINFO("ABIAS_PNOISE",    11, NavEKF, _accelBiasProcessNoise, 1.0e-4f),
+    AP_GROUPINFO("ABIAS_PNOISE",    11, NavEKF, _accelBiasProcessNoise, ABIAS_PNOISE_DEFAULT),
 
     // @Param: MAGE_PNOISE
     // @DisplayName: Earth magnetic field states process noise (gauss/s)
     // @Description: This noise controls the growth of earth magnetic field state error estimates. Increasing it makes earth magnetic field bias estimation faster and noisier.
     // @Range: 0.0001 - 0.01
     // @User: advanced
-    AP_GROUPINFO("MAGE_PNOISE",    12, NavEKF, _magEarthProcessNoise, 3.0e-4f),
+    AP_GROUPINFO("MAGE_PNOISE",    12, NavEKF, _magEarthProcessNoise, MAGE_PNOISE_DEFAULT),
 
     // @Param: MAGB_PNOISE
     // @DisplayName: Body magnetic field states process noise (gauss/s)
     // @Description: This noise controls the growth of body magnetic field state error estimates. Increasing it makes compass offset estimation faster and noisier.
     // @Range: 0.0001 - 0.01
     // @User: advanced
-    AP_GROUPINFO("MAGB_PNOISE",    13, NavEKF, _magBodyProcessNoise, 3.0e-4f),
+    AP_GROUPINFO("MAGB_PNOISE",    13, NavEKF, _magBodyProcessNoise, MAGB_PNOISE_DEFAULT),
 
     // @Param: VEL_DELAY
     // @DisplayName: GPS velocity measurement delay (msec)
@@ -163,7 +230,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 1 - 100
     // @Increment: 1
     // @User: advanced
-    AP_GROUPINFO("VEL_GATE",    17, NavEKF, _gpsVelInnovGate, 5),
+    AP_GROUPINFO("VEL_GATE",    17, NavEKF, _gpsVelInnovGate, VEL_GATE_DEFAULT),
 
     // @Param: POS_GATE
     // @DisplayName: GPS position measurement gate size
@@ -171,7 +238,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 1 - 100
     // @Increment: 1
     // @User: advanced
-    AP_GROUPINFO("POS_GATE",    18, NavEKF, _gpsPosInnovGate, 10),
+    AP_GROUPINFO("POS_GATE",    18, NavEKF, _gpsPosInnovGate, POS_GATE_DEFAULT),
 
     // @Param: HGT_GATE
     // @DisplayName: Height measurement gate size
@@ -179,7 +246,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 1 - 100
     // @Increment: 1
     // @User: advanced
-    AP_GROUPINFO("HGT_GATE",    19, NavEKF, _hgtInnovGate, 10),
+    AP_GROUPINFO("HGT_GATE",    19, NavEKF, _hgtInnovGate, HGT_GATE_DEFAULT),
 
     // @Param: MAG_GATE
     // @DisplayName: Magnetometer measurement gate size
@@ -187,7 +254,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 1 - 100
     // @Increment: 1
     // @User: advanced
-    AP_GROUPINFO("MAG_GATE",    20, NavEKF, _magInnovGate, 5),
+    AP_GROUPINFO("MAG_GATE",    20, NavEKF, _magInnovGate, MAG_GATE_DEFAULT),
 
     // @Param: EAS_GATE
     // @DisplayName: Airspeed measurement gate size
@@ -203,7 +270,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] PROGMEM = {
     // @Range: 0 - 1
     // @Increment: 1
     // @User: advanced
-    AP_GROUPINFO("MAG_CAL",    22, NavEKF, _magCal, 0),
+    AP_GROUPINFO("MAG_CAL",    22, NavEKF, _magCal, MAG_CAL_DEFAULT),
 
     AP_GROUPEND
 };
@@ -362,46 +429,9 @@ void NavEKF::InitialiseFilterDynamic(void)
     // get initial time deltat between IMU measurements (sec)
     dtIMU = _ahrs->get_ins().get_delta_time();
 
-    // declare local variables required to calculate initial orientation and magnetic field
-    float yaw;
-    Matrix3f Tbn;
-    Vector3f initMagNED;
+    // calculate initial orientation and earth magnetic field states
     Quaternion initQuat;
-
-    // calculate initial yaw angle using declination and magnetic field if available
-    // otherwise set yaw to zero
-    if (use_compass()) {
-        // calculate rotation matrix from body to NED frame
-        Tbn.from_euler(_ahrs->roll, _ahrs->pitch, 0.0f);
-
-        // read the magnetometer data
-        readMagData();
-
-        // rotate the magnetic field into NED axes
-        initMagNED = Tbn*magData;
-
-        // calculate heading of mag field rel to body heading
-        float magHeading = atan2f(initMagNED.y, initMagNED.x);
-
-        // get the magnetic declination
-        float magDecAng = use_compass() ? _ahrs->get_compass()->get_declination() : 0;
-
-        // calculate yaw angle rel to true north
-        yaw = magDecAng - magHeading;
-        yawAligned = true;
-
-        // calculate initial filter quaternion states
-        initQuat.from_euler(_ahrs->roll, _ahrs->pitch, yaw);
-
-        // calculate initial Tbn matrix and rotate Mag measurements into NED
-        // to set initial NED magnetic field states
-        initQuat.rotation_matrix(Tbn);
-        initMagNED = Tbn * magData;
-    } else {
-        // calculate initial filter quaternion states
-        initQuat.from_euler(_ahrs->roll, _ahrs->pitch, 0.0f);
-        yawAligned = false;
-    }
+    initQuat = calcQuatAndFieldStates(_ahrs->roll, _ahrs->pitch);
 
     // write to state vector
     state.quat = initQuat;
@@ -412,14 +442,13 @@ void NavEKF::InitialiseFilterDynamic(void)
     ResetVelocity();
     ResetPosition();
     ResetHeight();
-    state.earth_magfield = initMagNED;
     state.body_magfield  = magBias;
 
     // set to true now that states have be initialised
     statesInitialised = true;
 
     // initialise the covariance matrix
-    CovarianceInit(_ahrs->roll, _ahrs->pitch, _ahrs->yaw);
+    CovarianceInit();
 
     // define Earth rotation vector in the NED navigation frame
     calcEarthRateNED(earthRateNED, _ahrs->get_home().lat);
@@ -453,39 +482,9 @@ void NavEKF::InitialiseFilterBootstrap(void)
     // calculate initial roll angle
     float roll = -asinf(initAccVec.y / cosf(pitch));
 
-    // calculate initial yaw angle
-    float yaw;
-    Matrix3f Tbn;
-    Vector3f initMagNED;
-    if (use_compass()) {
-        // calculate rotation matrix from body to NED frame
-        Tbn.from_euler(roll, pitch, 0.0f);
-
-        // rotate the magnetic field into NED axesn
-        initMagNED = Tbn*magData;
-
-        // calculate heading of mag field rel to body heading
-        float magHeading = atan2f(initMagNED.y, initMagNED.x);
-
-        // get the magnetic declination
-        float magDecAng = use_compass() ? _ahrs->get_compass()->get_declination() : 0;
-
-        // calculate yaw angle rel to true north
-        yaw = magDecAng - magHeading;
-        yawAligned = true;
-    } else {
-        yaw = 0.0f;
-        yawAligned = false;
-    }
-
-    // calculate initial filter quaternion states
+    // calculate initial orientation and earth magnetic field states
     Quaternion initQuat;
-    initQuat.from_euler(roll, pitch, yaw);
-
-    // calculate initial Tbn matrix and rotate Mag measurements into NED
-    // to set initial NED magnetic field states
-    initQuat.rotation_matrix(Tbn);
-    initMagNED = Tbn * magData;
+    initQuat = calcQuatAndFieldStates(roll, pitch);
 
     // read the GPS
     readGpsData();
@@ -502,14 +501,13 @@ void NavEKF::InitialiseFilterBootstrap(void)
     state.accel_zbias1 = 0;
     state.accel_zbias2 = 0;
     state.wind_vel.zero();
-    state.earth_magfield = initMagNED;
     state.body_magfield = magBias;
 
     // set to true now we have intialised the states
     statesInitialised = true;
 
     // initialise the covariance matrix
-    CovarianceInit(roll, pitch, yaw);
+    CovarianceInit();
 
     // define Earth rotation vector in the NED navigation frame
     calcEarthRateNED(earthRateNED, _ahrs->get_home().lat);
@@ -563,6 +561,7 @@ void NavEKF::UpdateFilter()
         ResetPosition();
         ResetHeight();
         StoreStatesReset();
+        calcQuatAndFieldStates(_ahrs->roll, _ahrs->pitch);
         prevStaticMode = staticMode;
     }
 
@@ -641,9 +640,6 @@ void NavEKF::SelectVelPosFusion()
             fusePosData = false;
         }
 
-        // check for and read new height data
-        readHgtData();
-
         // command fusion of height data
         if (newDataHgt)
         {
@@ -660,7 +656,7 @@ void NavEKF::SelectVelPosFusion()
     } else {
         // in static mode we only fuse position and height to improve long term numerical stability
         // and only when the rate of change of velocity is less than 0.5g. This prevents attitude errors
-        // due to launch acceleration
+        // due to launch acceleration. position is assumed to be zero.
         fuseVelData = false;
         if (accNavMag < 4.9f) {
             fusePosData = true;
@@ -670,6 +666,9 @@ void NavEKF::SelectVelPosFusion()
             fuseHgtData = false;
         }
     }
+
+    // check for and read new height data
+    readHgtData();
 
     // perform fusion as commanded, and in accordance with specified time intervals
     if (fuseVelData || fusePosData || fuseHgtData) {
@@ -891,7 +890,7 @@ void NavEKF::CovariancePrediction()
     // this allows for wind gradient effects.
     windVelSigma  = dt * constrain_float(_windVelProcessNoise, 0.01f, 1.0f) * (1.0f + constrain_float(_wndVarHgtRateScale, 0.0f, 1.0f) * fabsf(hgtRate));
     dAngBiasSigma = dt * constrain_float(_gyroBiasProcessNoise, 1e-7f, 1e-5f);
-    dVelBiasSigma = dt * constrain_float(_accelBiasProcessNoise, 1e-4f, 1e-2f);
+    dVelBiasSigma = dt * constrain_float(_accelBiasProcessNoise, 2e-4f, 1e-3f);
     magEarthSigma = dt * constrain_float(_magEarthProcessNoise, 1e-4f, 1e-2f);
     magBodySigma  = dt * constrain_float(_magBodyProcessNoise, 1e-4f, 1e-2f);
     for (uint8_t i= 0; i<=9;  i++) processNoise[i] = 1.0e-9f;
@@ -1544,7 +1543,7 @@ void NavEKF::FuseVelPosNED()
         // because there may be no stored states due to lack of real measurements.
         // in static mode, only position and height fusion is used
         if (staticMode) {
-            for (uint8_t i=7; i<=9; i++) {
+            for (uint8_t i=0; i<=30; i++) {
                 statesAtPosTime[i] = states[i];
                 statesAtHgtTime[i] = states[i];
             }
@@ -1555,14 +1554,14 @@ void NavEKF::FuseVelPosNED()
         if (useAirspeed()) gpsRetryTime = _gpsRetryTimeUseTAS;
         else gpsRetryTime = _gpsRetryTimeNoTAS;
 
-        // form the observation vector and zero observations if in static mode
+        // form the observation vector and zero velocity and horizontal position observations if in static mode
         if (~staticMode) {
             for (uint8_t i=0; i<=2; i++) observation[i] = velNED[i];
             for (uint8_t i=3; i<=4; i++) observation[i] = posNE[i-3];
-        observation[5] = -hgtMea;
         } else {
-            for (uint8_t i=0; i<=5; i++) observation[i] = 0.0f;
+            for (uint8_t i=0; i<=4; i++) observation[i] = 0.0f;
         }
+        observation[5] = -hgtMea;
 
         // calculate additional error in GPS velocity caused by manoeuvring
         NEvelErr = _gpsNEVelVarAccScale * accNavMag;
@@ -2498,10 +2497,18 @@ void NavEKF::zeroCols(Matrix22 &covMat, uint8_t first, uint8_t last)
 // store states in a history array along with time stamp
 void NavEKF::StoreStates()
 {
-    if (storeIndex > 49) storeIndex = 0;
-    for (uint8_t i=0; i<=30; i++) storedStates[i][storeIndex] = states[i];
-    statetimeStamp[storeIndex] = hal.scheduler->millis();
-    storeIndex = storeIndex + 1;
+    // Don't need to store states more often than every 10 msec
+    if (hal.scheduler->millis() - lastStateStoreTime_ms >= 10) {
+        lastStateStoreTime_ms = hal.scheduler->millis();
+        if (storeIndex > 49) {
+            storeIndex = 0;
+        }
+        for (uint8_t i=0; i<=30; i++) {
+            storedStates[i][storeIndex] = states[i];
+        }
+        statetimeStamp[storeIndex] = lastStateStoreTime_ms;
+        storeIndex = storeIndex + 1;
+    }
 }
 
 // reset the stored state history and store the current state
@@ -2655,14 +2662,14 @@ void NavEKF::OnGroundCheck()
         }
         // force a yaw alignment if exiting onGround without a compass
         if (!onGround && prevOnGround && !use_compass()) {
-            ForceYawAlignment();
+            alignYawGPS();
         }
     }
     prevOnGround = onGround;
 }
 
 // initialise the covariance matrix
-void NavEKF::CovarianceInit(float roll, float pitch, float yaw)
+void NavEKF::CovarianceInit()
 {
     // zero the matrix
     for (uint8_t i=1; i<=21; i++)
@@ -2690,16 +2697,16 @@ void NavEKF::CovarianceInit(float roll, float pitch, float yaw)
     P[11][11] = P[10][10];
     P[12][12] = P[10][10];
     // Z delta velocity bias
-	P[13][13] = sq(radians(0.5f * dtIMU));
+    P[13][13] = 0.0f;
     // wind velocities
     P[14][14] = sq(8.0f);
     P[15][15]  = P[14][14];
     // earth magnetic field
-    P[16][16] = sq(0.02f);
+    P[16][16] = sq(0.001f);
     P[17][17] = P[16][16];
     P[18][18] = P[16][16];
     // body magnetic field
-    P[19][19] = sq(0.02f);
+    P[19][19] = sq(0.001f);
     P[20][20] = P[19][19];
     P[21][21] = P[19][19];
 }
@@ -2984,9 +2991,59 @@ void NavEKF::calcEarthRateNED(Vector3f &omega, int32_t latitude) const
     omega.z  = -earthRate*sinf(lat_rad);
 }
 
+// initialise the earth magnetic field states using declination, suppled roll/pitch
+// and magnetometer measurements and return initial attitude quaternion
+// if no magnetometer data, do not update amgentic field states and assume zero yaw angle
+Quaternion NavEKF::calcQuatAndFieldStates(float roll, float pitch)
+{
+    // declare local variables required to calculate initial orientation and magnetic field
+    float yaw;
+    Matrix3f Tbn;
+    Vector3f initMagNED;
+    Quaternion initQuat;
+
+    if (use_compass()) {
+        // calculate rotation matrix from body to NED frame
+        Tbn.from_euler(roll, pitch, 0.0f);
+
+        // read the magnetometer data
+        readMagData();
+
+        // rotate the magnetic field into NED axes
+        initMagNED = Tbn*(magData - magBias);
+
+        // calculate heading of mag field rel to body heading
+        float magHeading = atan2f(initMagNED.y, initMagNED.x);
+
+        // get the magnetic declination
+        float magDecAng = use_compass() ? _ahrs->get_compass()->get_declination() : 0;
+
+        // calculate yaw angle rel to true north
+        yaw = magDecAng - magHeading;
+        yawAligned = true;
+
+        // calculate initial filter quaternion states
+        initQuat.from_euler(roll, pitch, yaw);
+
+        // calculate initial Tbn matrix and rotate Mag measurements into NED
+        // to set initial NED magnetic field states
+        initQuat.rotation_matrix(Tbn);
+        initMagNED = Tbn * (magData - magBias);
+
+        // write to earth magnetic field state vector
+        state.earth_magfield = initMagNED;
+    } else {
+        initQuat.from_euler(roll, pitch, 0.0f);
+        yawAligned = false;
+    }
+
+    // return attitude quaternion
+    return initQuat;
+}
+
 // this function is used to do a forced alignment of the yaw angle to aligwith the horizontal velocity
 // vector from GPS. It is used to align the yaw angle after launch or takeoff without a magnetometer.
-void NavEKF::ForceYawAlignment()
+void NavEKF::alignYawGPS()
 {
     if ((sq(velNED[0]) + sq(velNED[1])) > 16.0f) {
         float roll;
@@ -3080,6 +3137,7 @@ void NavEKF::ZeroVariables()
     velTimeout = false;
     posTimeout = false;
     hgtTimeout = false;
+    lastStateStoreTime_ms = 0;
     lastFixTime_ms = 0;
     secondLastFixTime_ms = 0;
     lastMagUpdate = 0;

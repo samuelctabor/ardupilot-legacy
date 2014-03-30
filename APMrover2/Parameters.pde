@@ -145,6 +145,15 @@ const AP_Param::Info var_info[] PROGMEM = {
     // @User: Standard
 	GSCALAR(speed_turn_dist,    "SPEED_TURN_DIST",  2.0f),
 
+    // @Param: BRAKING_PERCENT
+    // @DisplayName: Percentage braking to apply
+    // @Description: The maximum reverse throttle braking percentage to apply when cornering
+    // @Units: percent
+    // @Range: 0 100
+    // @Increment: 1
+    // @User: Standard
+	GSCALAR(braking_percent,    "BRAKING_PERCENT",  0),
+
     // @Param: PIVOT_TURN_ANGLE
     // @DisplayName: Pivot turn angle
     // @Description: Navigation angle threshold in degrees to switch to pivot steering when SKID_STEER_OUT is 1. This allows you to setup a skid steering rover to turn on the spot in auto mode when the angle it needs to turn it greater than this angle. An angle of zero means to disable pivot turning. Note that you will probably also want to set a low value for WP_RADIUS to get neat turns.
@@ -213,6 +222,14 @@ const AP_Param::Info var_info[] PROGMEM = {
     // @Group: RC12_
     // @Path: ../libraries/RC_Channel/RC_Channel.cpp,../libraries/RC_Channel/RC_Channel_aux.cpp
     GGROUP(rc_12,                    "RC12_", RC_Channel_aux),
+
+    // @Group: RC13_
+    // @Path: ../libraries/RC_Channel/RC_Channel.cpp,../libraries/RC_Channel/RC_Channel_aux.cpp
+    GGROUP(rc_13,                    "RC13_", RC_Channel_aux),
+
+    // @Group: RC14_
+    // @Path: ../libraries/RC_Channel/RC_Channel.cpp,../libraries/RC_Channel/RC_Channel_aux.cpp
+    GGROUP(rc_14,                    "RC14_", RC_Channel_aux),
 #endif
 
     // @Param: THR_MIN
@@ -390,9 +407,6 @@ const AP_Param::Info var_info[] PROGMEM = {
     // @User: Standard
 	GSCALAR(mode6,           "MODE6",         MODE_6),
 
-	GSCALAR(command_total,          "CMD_TOTAL",        0),
-	GSCALAR(command_index,          "CMD_INDEX",        0),
-
     // @Param: WP_RADIUS
     // @DisplayName: Waypoint radius
     // @Description: The distance in meters from a waypoint when we consider the waypoint has been reached. This determines when the rover will turn along the next waypoint path.
@@ -506,6 +520,10 @@ const AP_Param::Info var_info[] PROGMEM = {
     // @Path: ../libraries/AP_NavEKF/AP_NavEKF.cpp
     GOBJECTN(ahrs.get_NavEKF(), NavEKF, "EKF_", NavEKF),
 #endif
+
+    // @Group: MIS_
+    // @Path: ../libraries/AP_Mission/AP_Mission.cpp
+    GOBJECT(mission, "MIS_",       AP_Mission),
 
 	AP_VAREND
 };

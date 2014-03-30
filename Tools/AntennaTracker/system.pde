@@ -14,6 +14,8 @@ static void init_tracker()
     // Check the EEPROM format version before loading any parameters from EEPROM
     load_parameters();
 
+    BoardConfig.init();
+
     // reset the uartA baud rate after parameter load
     hal.uartA->begin(map_baudrate(g.serial0_baud, SERIAL0_BAUD));
 
@@ -26,6 +28,11 @@ static void init_tracker()
     // Register mavlink_delay_cb, which will run anytime you have
     // more than 5ms remaining in your call to hal.scheduler->delay
     hal.scheduler->register_delay_callback(mavlink_delay_cb, 5);
+
+    // we start by assuming USB connected, as we initialed the serial
+    // port with SERIAL0_BAUD. check_usb_mux() fixes this if need be.    
+    usb_connected = true;
+    check_usb_mux();
 
     // we have a 2nd serial port for telemetry
     hal.uartC->begin(map_baudrate(g.serial1_baud, SERIAL1_BAUD),
@@ -47,7 +54,7 @@ static void init_tracker()
 	g_gps = &g_gps_driver;
 
     // GPS Initialization
-    g_gps->init(hal.uartB, GPS::GPS_ENGINE_STATIONARY);
+    g_gps->init(hal.uartB, GPS::GPS_ENGINE_STATIONARY, NULL);
 
     mavlink_system.compid = 4;
     mavlink_system.type = MAV_TYPE_ANTENNA_TRACKER;
@@ -73,14 +80,24 @@ static void init_tracker()
     channel_yaw.calc_pwm();
     channel_pitch.calc_pwm();
 
-    current_loc = get_home_eeprom(); // GPS may update this later
+    // use given start positions - useful for indoor testing, and
+    // while waiting for GPS lock
+    current_loc.lat = g.start_latitude * 1.0e7f;
+    current_loc.lng = g.start_longitude * 1.0e7f;
 
-    arm_servos();
+    // see if EEPROM has a default location as well
+    get_home_eeprom(current_loc);
 
     gcs_send_text_P(SEVERITY_LOW,PSTR("\nReady to track."));
     hal.scheduler->delay(1000); // Why????
 
     set_mode(AUTO); // tracking
+
+    if (g.startup_delay > 0) {
+        // arm servos with trim value to allow them to start up (required
+        // for some servos)
+        prepare_servos();
+    }
 }
 
 // Level the tracker by calibrating the INS
@@ -89,7 +106,6 @@ static void calibrate_ins()
 {
     gcs_send_text_P(SEVERITY_MEDIUM, PSTR("Beginning INS calibration; do not move tracker"));
     ahrs.init();
-    ahrs.set_fly_forward(true);
     ins.init(AP_InertialSensor::COLD_START, ins_sample_rate);
     ins.init_accel();
     ahrs.set_trim(Vector3f(0, 0, 0));
@@ -127,59 +143,45 @@ static uint32_t map_baudrate(int8_t rate, uint32_t default_baud)
 /*
   fetch HOME from EEPROM
 */
-static struct Location get_home_eeprom()
+static bool get_home_eeprom(struct Location &loc)
 {
-    struct Location temp;
     uint16_t mem;
 
     // Find out proper location in memory by using the start_byte position + the index
     // --------------------------------------------------------------------------------
     if (g.command_total.get() == 0) {
-        memset(&temp, 0, sizeof(temp));
-        temp.id = CMD_BLANK;
-    }else{
-        // read WP position
-        mem = WP_START_BYTE;
-        temp.id = hal.storage->read_byte(mem);
-
-        mem++;
-        temp.options = hal.storage->read_byte(mem);
-
-        mem++;
-        temp.p1 = hal.storage->read_byte(mem);
-
-        mem++;
-        temp.alt = hal.storage->read_dword(mem);
-
-        mem += 4;
-        temp.lat = hal.storage->read_dword(mem);
-
-        mem += 4;
-        temp.lng = hal.storage->read_dword(mem);
+        return false;
     }
 
-    return temp;
+    // read WP position
+    mem = WP_START_BYTE;
+    loc.options = hal.storage->read_byte(mem);
+    mem++;
+    
+    loc.alt = hal.storage->read_dword(mem);
+    mem += 4;
+    
+    loc.lat = hal.storage->read_dword(mem);
+    mem += 4;
+    
+    loc.lng = hal.storage->read_dword(mem);
+
+    return true;
 }
 
 static void set_home_eeprom(struct Location temp)
 {
     uint16_t mem = WP_START_BYTE;
 
-    hal.storage->write_byte(mem, temp.id);
-
-    mem++;
     hal.storage->write_byte(mem, temp.options);
-
     mem++;
-    hal.storage->write_byte(mem, temp.p1);
 
-    mem++;
     hal.storage->write_dword(mem, temp.alt);
-
     mem += 4;
+
     hal.storage->write_dword(mem, temp.lat);
-
     mem += 4;
+
     hal.storage->write_dword(mem, temp.lng);
 
     // Now have a home location in EEPROM
@@ -188,14 +190,12 @@ static void set_home_eeprom(struct Location temp)
 
 static void set_home(struct Location temp)
 {
-    if (g.compass_enabled)
-        compass.set_initial_location(temp.lat, temp.lng);
     set_home_eeprom(temp);
     current_loc = temp;
 }
 
 static void arm_servos()
-{
+{    
     channel_yaw.enable_out();
     channel_pitch.enable_out();
 }
@@ -206,6 +206,18 @@ static void disarm_servos()
     channel_pitch.disable_out();
 }
 
+/*
+  setup servos to trim value after initialising
+ */
+static void prepare_servos()
+{
+    start_time_ms = hal.scheduler->millis();
+    channel_yaw.radio_out = channel_yaw.radio_trim;
+    channel_pitch.radio_out = channel_pitch.radio_trim;
+    channel_yaw.output();
+    channel_pitch.output();
+}
+
 static void set_mode(enum ControlMode mode)
 {
     if(control_mode == mode) {
@@ -213,5 +225,39 @@ static void set_mode(enum ControlMode mode)
         return;
     }
     control_mode = mode;
+
+	switch (control_mode) {
+    case AUTO:
+    case MANUAL:
+        arm_servos();
+        break;
+
+    case STOP:
+    case INITIALISING:
+        disarm_servos();
+        break;
+    }
 }
 
+static void check_usb_mux(void)
+{
+    bool usb_check = hal.gpio->usb_connected();
+    if (usb_check == usb_connected) {
+        return;
+    }
+
+    // the user has switched to/from the telemetry port
+    usb_connected = usb_check;
+
+#if CONFIG_HAL_BOARD == HAL_BOARD_APM2
+    // the APM2 has a MUX setup where the first serial port switches
+    // between USB and a TTL serial connection. When on USB we use
+    // SERIAL0_BAUD, but when connected as a TTL serial port we run it
+    // at SERIAL1_BAUD.
+    if (usb_connected) {
+        hal.uartA->begin(SERIAL0_BAUD);
+    } else {
+        hal.uartA->begin(map_baudrate(g.serial1_baud, SERIAL1_BAUD));
+    }
+#endif
+}

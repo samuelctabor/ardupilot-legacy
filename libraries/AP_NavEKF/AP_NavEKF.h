@@ -196,7 +196,7 @@ private:
     void OnGroundCheck();
 
     // initialise the covariance matrix
-    void CovarianceInit(float roll, float pitch, float yaw);
+    void CovarianceInit();
 
     // update IMU delta angle and delta velocity measurements
     void readIMUData();
@@ -226,7 +226,11 @@ private:
     void SelectMagFusion();
 
     // force alignment of the yaw angle using GPS velocity data
-    void ForceYawAlignment();
+    void alignYawGPS();
+
+    // initialise the earth magnetic field states using declination and current attitude and magnetometer meaasurements
+    // and return attitude quaternion
+    Quaternion calcQuatAndFieldStates(float roll, float pitch);
 
     // zero stored variables
     void ZeroVariables();
@@ -405,6 +409,7 @@ private:
     uint32_t posFailTime;           // time stamp when GPS position measurement last failed covaraiance consistency check (msec)
     uint32_t hgtFailTime;           // time stamp when height measurement last failed covaraiance consistency check (msec)
     uint8_t storeIndex;             // State vector storage index
+    uint32_t lastStateStoreTime_ms; // time of last state vector storage
     uint32_t lastFixTime_ms;        // time of last GPS fix used to determine if new data has arrived
     uint32_t secondLastFixTime_ms;  // time of second last GPS fix used to determine how long since last update
     Vector3f lastAngRate;           // angular rate from previous IMU sample used for trapezoidal integrator
