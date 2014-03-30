@@ -1586,7 +1586,7 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
         if (g_gps != NULL) {
             // set gps hil sensor
             g_gps->setHIL(GPS::FIX_3D,
-                          uint64_t(1394928000000+millis()), //packet.time_usec/1000, 
+                          packet.time_usec/1000, 
                           packet.lat*1.0e-7, packet.lon*1.0e-7, packet.alt*1.0e-3,
                           vel*1.0e-2, cog*1.0e-2, 0, 10);
         }
