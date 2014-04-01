@@ -76,9 +76,9 @@ ExtendedKalmanFilter ekf;
        hal.console->printf_P(PSTR("Thermal detected, entering loiter\n"));
        previous_control_mode = current_control_mode;
        
-       prev_next_wp = next_WP;
+       prev_next_wp = next_WP_loc;
        
-       next_WP = current_loc; // filter offsets based on ac location
+       next_WP_loc = current_loc; // filter offsets based on ac location
          
        prev_update_location = current_loc; // needed to see how far the move the thermal relative to the a/c
        
@@ -96,7 +96,7 @@ ExtendedKalmanFilter ekf;
        // Also reset covariance matrix p so filter is not affected by previous data       
        ekf.reset(xr,p,q,r);
        
-       location_offset(next_WP, ekf.X[2], ekf.X[3]); //place waypoint to reflect filter state
+       location_offset(next_WP_loc, ekf.X[2], ekf.X[3]); //place waypoint to reflect filter state
        last_alt = barometer.get_altitude();  // So that the first delta is not nonsense
        prev_update_location = current_loc;                                // save for next time
        prev_update_time = millis();
@@ -140,7 +140,7 @@ ExtendedKalmanFilter ekf;
        // Exit as soon as thermal state estimate deteriorates
        hal.console->printf_P(PSTR("Thermal weak, reentering previous mode: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,rel_alt,McCready(rel_alt));
        calculated_control_mode =  previous_control_mode;
-       next_WP = prev_next_wp;    // continue to the waypoint being used before thermal mode
+       next_WP_loc = prev_next_wp;    // continue to the waypoint being used before thermal mode
        cruise_start_time_ms = millis();
      }
      else {
@@ -187,8 +187,8 @@ ExtendedKalmanFilter ekf;
        
        ekf.update(netto_rate,dx, dy);                              // update the filter
        
-       next_WP = current_loc; // as filter estimate is based on offset from current location
-       location_offset(next_WP, ekf.X[2], ekf.X[3]); //update the WP
+       next_WP_loc = current_loc; // as filter estimate is based on offset from current location
+       location_offset(next_WP_loc, ekf.X[2], ekf.X[3]); //update the WP
        
        prev_update_location = current_loc;      // save for next time
        prev_update_time = millis();
