@@ -542,10 +542,8 @@ static void Log_Write_Airspeed(void)
 
 // Write a THERMAL packet
 static void Log_Write_Thermal(void)
-{   log_thermal_tuning.head1 = HEAD_BYTE1;
-    log_thermal_tuning.head2 = HEAD_BYTE2;
-    log_thermal_tuning.msgid = LOG_THERMAL_MSG;
-    DataFlash.WriteBlock(&log_thermal_tuning, sizeof(log_thermal_tuning));
+{   
+    soaring_controller.log_data(DataFlash, LOG_THERMAL_MSG);
 }
 
 
@@ -578,9 +576,7 @@ static const struct LogStructure log_structure[] PROGMEM = {
     { LOG_AIRSPEED_MSG, sizeof(log_AIRSPEED),
       "ARSP",  "Iffc",     "TimeMS,Airspeed,DiffPress,Temp" },
     TECS_LOG_FORMAT(LOG_TECS_MSG),
-    { LOG_THERMAL_MSG, sizeof(log_Thermal_Tuning),
-      "THML",  "IfffffffLLf",     "TimeMS,nettorate,dx,dy,x0,x1,x2,x3,lat,lng,alt" }
- //  THML_LOG_FORMAT(LOG_THERMAL_MSG)
+    THML_LOG_FORMAT(LOG_THERMAL_MSG)
 };
 
 // Read the DataFlash.log memory : Packet Parser

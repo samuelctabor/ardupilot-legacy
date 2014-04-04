@@ -71,6 +71,9 @@
 #include <AP_TECS.h>
 #include <AP_NavEKF.h>
 #include <AP_Mission.h>     // Mission command library
+#include "MatrixMath.h"
+#include "ExtendedKalmanFilter.h"
+#include <SoaringController.h>
 
 #include <AP_Notify.h>      // Notify library
 #include <AP_BattMonitor.h> // Battery monitor library
@@ -328,6 +331,7 @@ static AP_Navigation *nav_controller = &L1_controller;
 // selected navigation controller
 static AP_SpdHgtControl *SpdHgt_Controller = &TECS_controller;
 
+static SoaringController soaring_controller(ahrs, SpdHgt_Controller, aparm);
 ////////////////////////////////////////////////////////////////////////////////
 // Analog Inputs
 ////////////////////////////////////////////////////////////////////////////////
@@ -405,21 +409,6 @@ static struct {
     ch2_temp : 1500
 };
 
-// Soaring log structure
-struct PACKED log_Thermal_Tuning {
-	LOG_PACKET_HEADER;		
-	uint32_t time_ms;
-	float netto_rate;
-	float dx;
-	float dy;
-	float x0;
-	float x1;		
-	float x2;		
-	float x3;		
-	uint32_t lat;		
-	uint32_t lng;		
-	float alt;
-	} log_thermal_tuning;
 
 
 ////////////////////////////////////////////////////////////////////////////////

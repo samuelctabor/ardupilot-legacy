@@ -512,39 +512,7 @@ const AP_Param::Info var_info[] PROGMEM = {
     GSCALAR(flight_mode6,           "FLTMODE6",       FLIGHT_MODE_6),
     
     //
-    // ArduSoar parameters
     
-    // @Param: SOAR_ACTIVE
-    // @DisplayName: Is the soaring mode active or not
-    // @Description: Toggles the soaring mode on and off
-    // @Units: boolean
-    // @Range: 0 1
-    // @User: Advanced
-    GSCALAR(soar_active,    "SOAR_ACTIVE",   SOAR_ACTIVE),
-     
-    // @Param: THERMAL_VSPEED
-    // @DisplayName: Vertical v-speed
-    // @Description: Rate of climb to trigger themalling speed
-    // @Units: m/s
-    // @Range: 0 10
-    // @User: Advanced 
-    GSCALAR(thermal_vspeed,  "THERMAL_VSPEED", THERMAL_VSPEED),
-    
-    // @Param: THERMAL_Q
-    // @DisplayName: Process noise
-    // @Description: Standard deviation of noise in process
-    // @Units: 
-    // @Range: 0 10
-    // @User: Advanced 
-    GSCALAR(thermal_q,  "THERMAL_Q", THERMAL_Q),
-    
-    // @Param: THERMAL_R
-    // @DisplayName: Measurement noise
-    // @Description: Standard deviation of noise in measurement
-    // @Units: 
-    // @Range: 0 10
-    // @User: Advanced 
-    GSCALAR(thermal_r,  "THERMAL_R", THERMAL_R),
   
 
     // @Param: LIM_ROLL_CD
