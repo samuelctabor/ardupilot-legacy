@@ -994,7 +994,11 @@ const AP_Param::Info var_info[] PROGMEM = {
     // @Group: MIS_
     // @Path: ../libraries/AP_Mission/AP_Mission.cpp
     GOBJECT(mission, "MIS_",       AP_Mission),
-
+       
+    // @Group: SOAR_
+    // @Path: ../libraries/SoaringController/SoaringController.cpp
+    GOBJECT(soaring_controller,         "SOAR_",   SoaringController),
+    
     AP_VAREND
 };
 

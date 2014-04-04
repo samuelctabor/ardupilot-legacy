@@ -28,7 +28,7 @@
  
  // Check to see if see if we should be thermalling
  static FlightMode thermal(FlightMode current_control_mode) {
-
+   soaring_controller.update_cruising();
    FlightMode calculated_control_mode = current_control_mode;
 
    if (( millis()- cruise_start_time_ms ) > MIN_CRUISE_TIME_MS && soaring_controller.check_thermal_criteria()) {
@@ -47,7 +47,7 @@
  // Check to see if we've topped out of a thermal and 
  // Should transition to cruise (or rather the previous control mode).
  static FlightMode cruise(FlightMode current_control_mode) {
-
+ soaring_controller.update_thermalling(g.loiter_radius);
  FlightMode calculated_control_mode = current_control_mode;  // default  behaviour is to keep current mode
 
    if ( soaring_controller.check_cruise_criteria() && (millis()-thermal_start_time_ms) > MIN_THERMAL_TIME_MS) {

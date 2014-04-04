@@ -280,10 +280,7 @@ public:
         k_param_pidNavPitchAltitude, // unused
         k_param_pidWheelSteer, // unused
         // ArduSoar parameters
-        k_param_soar_active,
-        k_param_thermal_vspeed,
-        k_param_thermal_q,
-        k_param_thermal_r,
+        k_param_soaring_controller
 
         // 254,255: reserved
     };
@@ -387,10 +384,10 @@ public:
 
     //
     // ArduSoar parameters
-    AP_Int8 soar_active;
-    AP_Float thermal_vspeed;
-    AP_Float thermal_q;
-    AP_Float thermal_r;
+    //AP_Int8 soar_active;
+    //AP_Float thermal_vspeed;
+    //AP_Float thermal_q;
+    //AP_Float thermal_r;
     // Navigational maneuvering limits
     //
     AP_Int16 roll_limit_cd;

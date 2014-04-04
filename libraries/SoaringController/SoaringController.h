@@ -37,7 +37,6 @@ class SoaringController
   AP_Float thermal_r;
   
   AP_SpdHgtControl *&_spdHgt;
-  
   float p[N][N] = {{INITIAL_STRENGTH_COVARIANCE, 0,                         0,                           0},
                  {0,                           INITIAL_RADIUS_COVARIANCE, 0,                           0},
                  {0,                           0,                         INITIAL_POSITION_COVARIANCE, 0},
@@ -62,6 +61,7 @@ class SoaringController
  
  float _vario_reading;
  float last_alt;
+ float _loiter_rad; // Loiter radius passed in
  float correct_netto_rate(float climb_rate, float phi, float aspd);
  float McCready(float alt);
   public:
@@ -81,7 +81,7 @@ class SoaringController
   bool check_cruise_criteria();
   void init_thermalling();
   void init_cruising();
-  void update_thermalling();
+  void update_thermalling(float loiter_radius);
   void update_cruising();
   // Soaring log structure
 struct PACKED log_Thermal_Tuning {

@@ -1,9 +1,5 @@
 #include <AP_HAL.h>
 #include "SoaringController.h"
-#include <MatrixMath.h>
-#include <ExtendedKalmanFilter.h>
-
-
 
 extern const AP_HAL::HAL& hal;
 
@@ -16,7 +12,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: boolean
     // @Range: 0 1
     // @User: Advanced
-    AP_GROUPINFO("SOAR_ACTIVE", 0, SoaringController, soar_active, 0),
+    AP_GROUPINFO("SOAR_ACTIVE", 0, SoaringController, soar_active, 0.0f),
      
     // @Param: THERMAL_VSPEED
     // @DisplayName: Vertical v-speed
@@ -24,7 +20,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: m/s
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("THERMAL_VSPEED", 1, SoaringController, thermal_vspeed, 50),
+    AP_GROUPINFO("THERMAL_VSPEED", 1, SoaringController, thermal_vspeed, 50.0f),
     
     // @Param: THERMAL_Q
     // @DisplayName: Process noise
@@ -32,7 +28,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: 
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("THERMAL_Q", 2, SoaringController, thermal_q, 0.1),
+    AP_GROUPINFO("THERMAL_Q", 2, SoaringController, thermal_q, 0.1f),
     
     // @Param: THERMAL_R
     // @DisplayName: Measurement noise
@@ -40,7 +36,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: 
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("THERMAL_R", 3, SoaringController, thermal_r, 0.1),
+    AP_GROUPINFO("THERMAL_R", 3, SoaringController, thermal_r, 0.1f),
 };
     
 void SoaringController::get_target(Location &wp)
@@ -59,22 +55,14 @@ bool SoaringController::check_thermal_criteria()
 }
 bool SoaringController::check_cruise_criteria()
 {
-    float thermalability = 0;
-    //float thermalability = (ekf.X[0]*exp(-pow(aparm.loiter_radius/ekf.X[1],2)))-EXPECTED_THERMALLING_SINK; 
+    float thermalability = (ekf.X[0]*exp(-pow(_loiter_rad/ekf.X[1],2)))-EXPECTED_THERMALLING_SINK; 
     
-    //////// NB NB
-    // loiter rad unavailable, require a different technique,
-    ////////
-    
-    //float alt = _ahrs.get_baro().get_altitude();
-    //float rel_alt = alt - (float)_ahrs.get_home().alt/100.0;
     float rel_alt = _ahrs.get_home().alt/100.0f;
     hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,rel_alt,McCready(rel_alt));
     return (thermalability < McCready(rel_alt));
 }
 void SoaringController::init_thermalling()
 {
-    //next_WP_loc = current_loc; // filter offsets based on ac location
     //Calc filter matrices - so that changes to parameters can be updated by switching in and out of thermal mode
     float r[1][1] = {{pow(thermal_r,2)}};
     float cov_q = pow(thermal_q,2); //State covariance
@@ -94,8 +82,9 @@ void SoaringController::init_cruising()
     //requested_flight_mode = AUTO;
 }
 
-void SoaringController::update_thermalling()
+void SoaringController::update_thermalling(float loiter_radius)
 {
+    _loiter_rad = loiter_radius;
     float alt = 0;
     struct Location current_loc;
     _ahrs.get_position(current_loc);
@@ -135,7 +124,6 @@ void SoaringController::update_thermalling()
         log_tuning.lat = current_loc.lat;
         log_tuning.lng = current_loc.lng;
         log_tuning.alt = alt;
-
     }
      
     ekf.update(_vario_reading,dx, dy);                              // update the filter
@@ -157,8 +145,6 @@ void SoaringController::update_vario()
     // Correct for aircraft sink
     float aspd;
     
-
-    //aspd = _ahrs.get_airspeed()->get_airspeed();
     if (!_ahrs.airspeed_estimate(&aspd)) {
         aspd = 0.5f*(aparm.airspeed_min+aparm.airspeed_max); //
     }
