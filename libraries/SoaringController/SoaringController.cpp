@@ -53,7 +53,6 @@ bool SoaringController::suppress_throttle()
 
 bool SoaringController::check_thermal_criteria()
 {
-    hal.console->printf_P(PSTR("vario %f\n"),_vario_reading);
     return (_vario_reading > thermal_vspeed);
 }
 bool SoaringController::check_cruise_criteria()
@@ -61,7 +60,8 @@ bool SoaringController::check_cruise_criteria()
     float thermalability = (ekf.X[0]*exp(-pow(_loiter_rad/ekf.X[1],2)))-EXPECTED_THERMALLING_SINK; 
 
     //hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,rel_alt,McCready(rel_alt));
-    hal.console->printf_P(PSTR("Thermalability %f McC %f \n"),thermalability, McCready(_alt));
+    
+    //hal.console->printf_P(PSTR("Thermalability %f McC %f \n"),thermalability, McCready(_alt));
    
     return (thermalability < McCready(_alt));
 }
@@ -88,11 +88,13 @@ void SoaringController::init_cruising()
 
 void SoaringController::update_thermalling(float loiter_radius)
 {
-    hal.console->printf_P(PSTR("Updating thermalling, vario %f\n"),_vario_reading);
+    
     _loiter_rad = loiter_radius;
     struct Location current_loc;
     _ahrs.get_position(current_loc);
-    if (!(current_loc.lat==prev_update_location.lat)) {
+    hal.console->printf_P(PSTR("Updating thermalling\n"));
+    if (_new_data) {
+        hal.console->printf_P(PSTR("New data, vario %f\n"),_vario_reading);
         float dx = get_offset_north(prev_update_location, current_loc);  // get distances from previous update
         float dy = get_offset_east(prev_update_location, current_loc);
 
@@ -135,6 +137,10 @@ void SoaringController::update_thermalling(float loiter_radius)
          
         prev_update_location = current_loc;      // save for next time
         prev_update_time = hal.scheduler->millis();
+        _new_data = false;
+    }
+    else {
+        hal.console->printf_P(PSTR("No new data\n"));
     }
 }
 void SoaringController::update_cruising()
@@ -160,6 +166,7 @@ void SoaringController::update_vario()
         //hal.console->printf_P(PSTR("Vario    %f %f\n"),dhdt,_vario_reading);
         _last_alt = _alt;
         _prev_vario_update_time = hal.scheduler->millis();
+        _new_data=true;
     }
 }
 

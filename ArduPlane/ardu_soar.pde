@@ -11,7 +11,7 @@
  *  version 2.1 of the License, or (at your option) any later version.
  */
 #define MIN_THERMAL_TIME_MS  60000
-#define MIN_CRUISE_TIME_MS  120000
+#define MIN_CRUISE_TIME_MS  2000
 
  // Keep track of the previous flight mode so we can transition back
  // When we come out of thermal mode.
@@ -52,7 +52,7 @@
    soaring_controller.update_thermalling(g.loiter_radius);
    FlightMode calculated_control_mode = current_control_mode;  // default  behaviour is to keep current mode
 
-   if ( soaring_controller.check_cruise_criteria() && (millis()-thermal_start_time_ms) > MIN_THERMAL_TIME_MS) {
+   if ( (millis()-thermal_start_time_ms) > MIN_THERMAL_TIME_MS && soaring_controller.check_cruise_criteria())   {
      // Exit as soon as thermal state estimate deteriorates
      calculated_control_mode =  previous_control_mode;
      next_WP_loc = prev_next_wp;    // continue to the waypoint being used before thermal mode

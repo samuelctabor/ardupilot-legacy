@@ -62,6 +62,7 @@ class SoaringController
  float _vario_reading;
  float _last_alt;
  float _alt;
+ bool _new_data;
  float _loiter_rad; // Loiter radius passed in
  float correct_netto_rate(float climb_rate, float phi, float aspd);
  float McCready(float alt);
