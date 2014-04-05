@@ -12,7 +12,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: boolean
     // @Range: 0 1
     // @User: Advanced
-    AP_GROUPINFO("SOAR_ACTIVE", 0, SoaringController, soar_active, 0.0f),
+    AP_GROUPINFO("ACTIVE", 0, SoaringController, soar_active, 0.0f),
      
     // @Param: THERMAL_VSPEED
     // @DisplayName: Vertical v-speed
@@ -20,7 +20,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: m/s
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("THERMAL_VSPEED", 1, SoaringController, thermal_vspeed, 50.0f),
+    AP_GROUPINFO("VSPEED", 1, SoaringController, thermal_vspeed, 50.0f),
     
     // @Param: THERMAL_Q
     // @DisplayName: Process noise
@@ -28,7 +28,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: 
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("THERMAL_Q", 2, SoaringController, thermal_q, 0.1f),
+    AP_GROUPINFO("Q", 2, SoaringController, thermal_q, 0.1f),
     
     // @Param: THERMAL_R
     // @DisplayName: Measurement noise
@@ -36,12 +36,14 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: 
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("THERMAL_R", 3, SoaringController, thermal_r, 0.1f),
+    AP_GROUPINFO("R", 3, SoaringController, thermal_r, 0.1f),
+    
+    AP_GROUPEND
 };
     
 void SoaringController::get_target(Location &wp)
 {
-    _ahrs.get_position(wp);
+    wp=prev_update_location;
     location_offset(wp,ekf.X[2],ekf.X[3]);
 }
 bool SoaringController::suppress_throttle()
@@ -51,15 +53,17 @@ bool SoaringController::suppress_throttle()
 
 bool SoaringController::check_thermal_criteria()
 {
+    hal.console->printf_P(PSTR("vario %f\n"),_vario_reading);
     return (_vario_reading > thermal_vspeed);
 }
 bool SoaringController::check_cruise_criteria()
 {
     float thermalability = (ekf.X[0]*exp(-pow(_loiter_rad/ekf.X[1],2)))-EXPECTED_THERMALLING_SINK; 
-    
-    float rel_alt = _ahrs.get_home().alt/100.0f;
-    hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,rel_alt,McCready(rel_alt));
-    return (thermalability < McCready(rel_alt));
+
+    //hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,rel_alt,McCready(rel_alt));
+    hal.console->printf_P(PSTR("Thermalability %f McC %f \n"),thermalability, McCready(_alt));
+   
+    return (thermalability < McCready(_alt));
 }
 void SoaringController::init_thermalling()
 {
@@ -73,7 +77,7 @@ void SoaringController::init_thermalling()
     // Also reset covariance matrix p so filter is not affected by previous data       
     ekf.reset(xr,p,q,r);
     _ahrs.get_position(prev_update_location);
-    float last_alt = prev_update_location.alt/100.0f;
+    //_last_alt = prev_update_location.alt/100.0f;
     prev_update_time = hal.scheduler->millis();
 }
    
@@ -84,53 +88,54 @@ void SoaringController::init_cruising()
 
 void SoaringController::update_thermalling(float loiter_radius)
 {
+    hal.console->printf_P(PSTR("Updating thermalling, vario %f\n"),_vario_reading);
     _loiter_rad = loiter_radius;
-    float alt = 0;
     struct Location current_loc;
     _ahrs.get_position(current_loc);
-    float dx = get_offset_north(prev_update_location, current_loc);  // get distances from previous update
-    float dy = get_offset_east(prev_update_location, current_loc);
+    if (!(current_loc.lat==prev_update_location.lat)) {
+        float dx = get_offset_north(prev_update_location, current_loc);  // get distances from previous update
+        float dy = get_offset_east(prev_update_location, current_loc);
 
-    if (0) {
-        // Wind correction currently unused
-        //Vector3f wind = _ahrs.wind_estimate();
-        //dx += wind.x * (millis()-prev_update_time)/1000.0;
-        //dy += wind.y * (millis()-prev_update_time)/1000.0;
-    }
-
-    if (0) {
-        // Print filter info for debugging
-        //hal.console->printf_P(PSTR("%f %f %f "),netto_rate, dx, dy);
-
-        int i;
-        for (i=0;i<4;i++) {
-            hal.console->printf_P(PSTR("%e "),ekf.P[i][i]);
+        if (0) {
+            // Wind correction currently unused
+            //Vector3f wind = _ahrs.wind_estimate();
+            //dx += wind.x * (millis()-prev_update_time)/1000.0;
+            //dy += wind.y * (millis()-prev_update_time)/1000.0;
         }
-        for (i=0;i<4;i++) {
-            hal.console->printf_P(PSTR("%e "),ekf.X[i]);
+
+        if (0) {
+            // Print filter info for debugging
+            //hal.console->printf_P(PSTR("%f %f %f "),netto_rate, dx, dy);
+
+            int i;
+            for (i=0;i<4;i++) {
+                hal.console->printf_P(PSTR("%e "),ekf.P[i][i]);
+            }
+            for (i=0;i<4;i++) {
+                hal.console->printf_P(PSTR("%e "),ekf.X[i]);
+            }
+            //hal.console->printf_P(PSTR("%ld %ld %f %f %f %f\n"),current_loc.lng, current_loc.lat, airspeed.get_airspeed(), alt, ahrs.roll, climb_rate_unfilt);
         }
-        //hal.console->printf_P(PSTR("%ld %ld %f %f %f %f\n"),current_loc.lng, current_loc.lat, airspeed.get_airspeed(), alt, ahrs.roll, climb_rate_unfilt);
+        else {
+             // write log - save the data.
+            log_tuning.time_ms = hal.scheduler->millis();
+            log_tuning.netto_rate = _vario_reading;
+            log_tuning.dx = dx;
+            log_tuning.dy = dy;
+            log_tuning.x0 = ekf.X[0];
+            log_tuning.x1 = ekf.X[1];
+            log_tuning.x2 = ekf.X[2];
+            log_tuning.x3 = ekf.X[3];
+            log_tuning.lat = current_loc.lat;
+            log_tuning.lng = current_loc.lng;
+            log_tuning.alt = _alt;
+        }
+         
+        ekf.update(_vario_reading,dx, dy);                              // update the filter
+         
+        prev_update_location = current_loc;      // save for next time
+        prev_update_time = hal.scheduler->millis();
     }
-    else {
-         // write log - save the data.
-        log_tuning.time_ms = hal.scheduler->millis();
-        log_tuning.netto_rate = _vario_reading;
-        log_tuning.dx = dx;
-        log_tuning.dy = dy;
-        log_tuning.x0 = ekf.X[0];
-        log_tuning.x1 = ekf.X[1];
-        log_tuning.x2 = ekf.X[2];
-        log_tuning.x3 = ekf.X[3];
-        log_tuning.lat = current_loc.lat;
-        log_tuning.lng = current_loc.lng;
-        log_tuning.alt = alt;
-    }
-     
-    ekf.update(_vario_reading,dx, dy);                              // update the filter
-     
-    prev_update_location = current_loc;      // save for next time
-    prev_update_time = hal.scheduler->millis();
-    last_alt = alt;
 }
 void SoaringController::update_cruising()
 {
@@ -138,17 +143,24 @@ void SoaringController::update_cruising()
 }
 void SoaringController::update_vario()
 {   
+    //hal.console->printf_P(PSTR("Updating vario . . .\n"));
     Location current_loc;
     _ahrs.get_position(current_loc);
-    float alt = current_loc.alt/100.0f;
-    float dEdt = 1000.0*(alt - last_alt)/(hal.scheduler->millis()-prev_update_time);
-    // Correct for aircraft sink
-    float aspd;
-    
-    if (!_ahrs.airspeed_estimate(&aspd)) {
-        aspd = 0.5f*(aparm.airspeed_min+aparm.airspeed_max); //
+    _alt = current_loc.alt/100.0f;
+    //hal.console->printf_P(PSTR("    new alt %f last %f %u\n"),_alt, _last_alt, _alt==_last_alt);
+    if (!(_alt==_last_alt)) {
+        float dhdt = 1000.0*(_alt - _last_alt)/(hal.scheduler->millis()-_prev_vario_update_time);
+        // Correct for aircraft sink
+        float aspd;
+        
+        if (!_ahrs.airspeed_estimate(&aspd)) {
+            aspd = 0.5f*(aparm.airspeed_min+aparm.airspeed_max); //
+        }
+        _vario_reading = correct_netto_rate(dhdt, _ahrs.roll, aspd);
+        //hal.console->printf_P(PSTR("Vario    %f %f\n"),dhdt,_vario_reading);
+        _last_alt = _alt;
+        _prev_vario_update_time = hal.scheduler->millis();
     }
-    dEdt = correct_netto_rate(dEdt, _ahrs.roll, aspd);
 }
 
 float SoaringController::correct_netto_rate(float climb_rate, float phi, float aspd) {

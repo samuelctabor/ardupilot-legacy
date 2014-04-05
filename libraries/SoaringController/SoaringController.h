@@ -31,10 +31,7 @@ class SoaringController
   AP_AHRS &_ahrs;
   const AP_Vehicle::FixedWing &aparm;
   
-  AP_Float soar_active;
-  AP_Float thermal_vspeed;
-  AP_Float thermal_q;
-  AP_Float thermal_r;
+
   
   AP_SpdHgtControl *&_spdHgt;
   float p[N][N] = {{INITIAL_STRENGTH_COVARIANCE, 0,                         0,                           0},
@@ -57,13 +54,22 @@ class SoaringController
  
  // store time of last update
  unsigned long prev_update_time;
+ 
+  // store time of last update
+ unsigned long _prev_vario_update_time;
  //gcs_send_text_P(SEVERITY_LOW, PSTR("Soar initialisation complete"));
  
  float _vario_reading;
- float last_alt;
+ float _last_alt;
+ float _alt;
  float _loiter_rad; // Loiter radius passed in
  float correct_netto_rate(float climb_rate, float phi, float aspd);
  float McCready(float alt);
+ protected:
+   AP_Float soar_active;
+  AP_Float thermal_vspeed;
+  AP_Float thermal_q;
+  AP_Float thermal_r;
   public:
   SoaringController(AP_AHRS &ahrs, AP_SpdHgtControl *&spdHgt, const AP_Vehicle::FixedWing &parms) :
     _ahrs(ahrs),
