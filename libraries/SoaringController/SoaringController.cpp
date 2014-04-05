@@ -43,7 +43,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     
 void SoaringController::get_target(Location &wp)
 {
-    wp=prev_update_location;
+    wp=_prev_update_location;
     location_offset(wp,ekf.X[2],ekf.X[3]);
 }
 bool SoaringController::suppress_throttle()
@@ -53,17 +53,16 @@ bool SoaringController::suppress_throttle()
 
 bool SoaringController::check_thermal_criteria()
 {
-    return (_vario_reading > thermal_vspeed);
+    return((( hal.scheduler->millis() - _cruise_start_time_ms ) > MIN_CRUISE_TIME_MS) && _vario_reading > thermal_vspeed);
 }
 bool SoaringController::check_cruise_criteria()
 {
     float thermalability = (ekf.X[0]*exp(-pow(_loiter_rad/ekf.X[1],2)))-EXPECTED_THERMALLING_SINK; 
-
-    hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,_alt,McCready(_alt));
-    
-    //hal.console->printf_P(PSTR("Thermalability %f McC %f \n"),thermalability, McCready(_alt));
-   
-    return (thermalability < McCready(_alt));
+    if ((hal.scheduler->millis()-_thermal_start_time_ms) > MIN_THERMAL_TIME_MS && thermalability < McCready(_alt)) {
+        hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,_alt,McCready(_alt));
+        return true;
+    }
+    return false;
 }
 void SoaringController::init_thermalling()
 {
@@ -76,13 +75,14 @@ void SoaringController::init_thermalling()
     float xr[] = {INITIAL_THERMAL_STRENGTH, INITIAL_THERMAL_RADIUS, THERMAL_DISTANCE_AHEAD*cos(_ahrs.yaw), THERMAL_DISTANCE_AHEAD*sin(_ahrs.yaw)};      
     // Also reset covariance matrix p so filter is not affected by previous data       
     ekf.reset(xr,p,q,r);
-    _ahrs.get_position(prev_update_location);
-    prev_update_time = hal.scheduler->millis();
+    _ahrs.get_position(_prev_update_location);
+    _prev_update_time = hal.scheduler->millis();
+    _thermal_start_time_ms = hal.scheduler->millis();
 }
    
 void SoaringController::init_cruising()
 {
-    //requested_flight_mode = AUTO;
+    _cruise_start_time_ms = hal.scheduler->millis();
 }
 
 void SoaringController::update_thermalling(float loiter_radius)
@@ -92,14 +92,14 @@ void SoaringController::update_thermalling(float loiter_radius)
     struct Location current_loc;
     _ahrs.get_position(current_loc);
     if (_new_data) {
-        float dx = get_offset_north(prev_update_location, current_loc);  // get distances from previous update
-        float dy = get_offset_east(prev_update_location, current_loc);
+        float dx = get_offset_north(_prev_update_location, current_loc);  // get distances from previous update
+        float dy = get_offset_east(_prev_update_location, current_loc);
 
         if (0) {
             // Wind correction currently unused
             //Vector3f wind = _ahrs.wind_estimate();
-            //dx += wind.x * (millis()-prev_update_time)/1000.0;
-            //dy += wind.y * (millis()-prev_update_time)/1000.0;
+            //dx += wind.x * (millis()-_prev_update_time)/1000.0;
+            //dy += wind.y * (millis()-_prev_update_time)/1000.0;
         }
 
         if (0) {
@@ -132,8 +132,8 @@ void SoaringController::update_thermalling(float loiter_radius)
         log_data(); 
         ekf.update(_vario_reading,dx, dy);                              // update the filter
          
-        prev_update_location = current_loc;      // save for next time
-        prev_update_time = hal.scheduler->millis();
+        _prev_update_location = current_loc;      // save for next time
+        _prev_update_time = hal.scheduler->millis();
         _new_data = false;
     }
     else {

@@ -23,7 +23,8 @@ Provides a layer between the thermal centring algorithm and the main code for ma
 #define INITIAL_STRENGTH_COVARIANCE 2.0
 #define INITIAL_RADIUS_COVARIANCE 2500.0
 #define INITIAL_POSITION_COVARIANCE 300.0
-
+#define MIN_THERMAL_TIME_MS  60000
+#define MIN_CRUISE_TIME_MS  2000
 class SoaringController
 {
    
@@ -42,19 +43,19 @@ class SoaringController
 
  
  // Keep track of the waypoint so we can restore after coming out of thermal mode.
- struct Location prev_next_wp;
+ struct Location _prev_next_wp;
  
  //Store aircraft location at last update
- struct Location prev_update_location;
+ struct Location _prev_update_location;
  
  // store time thermal was entered for hysteresis
- unsigned long thermal_start_time_ms;
+ unsigned long _thermal_start_time_ms;
  
   // store time cruise was entered for hysteresis
- unsigned long cruise_start_time_ms;
+ unsigned long _cruise_start_time_ms;
  
  // store time of last update
- unsigned long prev_update_time;
+ unsigned long _prev_update_time;
  
   // store time of last update
  unsigned long _prev_vario_update_time;
