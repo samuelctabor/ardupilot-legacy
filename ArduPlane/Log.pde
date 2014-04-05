@@ -543,7 +543,7 @@ static void Log_Write_Airspeed(void)
 // Write a THERMAL packet
 static void Log_Write_Thermal(void)
 {   
-    soaring_controller.log_data(DataFlash, LOG_THERMAL_MSG);
+    soaring_controller.log_data();
 }
 
 

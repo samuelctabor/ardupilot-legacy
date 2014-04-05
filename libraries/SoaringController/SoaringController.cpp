@@ -59,7 +59,7 @@ bool SoaringController::check_cruise_criteria()
 {
     float thermalability = (ekf.X[0]*exp(-pow(_loiter_rad/ekf.X[1],2)))-EXPECTED_THERMALLING_SINK; 
 
-    //hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,rel_alt,McCready(rel_alt));
+    hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,_alt,McCready(_alt));
     
     //hal.console->printf_P(PSTR("Thermalability %f McC %f \n"),thermalability, McCready(_alt));
    
@@ -77,7 +77,6 @@ void SoaringController::init_thermalling()
     // Also reset covariance matrix p so filter is not affected by previous data       
     ekf.reset(xr,p,q,r);
     _ahrs.get_position(prev_update_location);
-    //_last_alt = prev_update_location.alt/100.0f;
     prev_update_time = hal.scheduler->millis();
 }
    
@@ -92,9 +91,7 @@ void SoaringController::update_thermalling(float loiter_radius)
     _loiter_rad = loiter_radius;
     struct Location current_loc;
     _ahrs.get_position(current_loc);
-    hal.console->printf_P(PSTR("Updating thermalling\n"));
     if (_new_data) {
-        hal.console->printf_P(PSTR("New data, vario %f\n"),_vario_reading);
         float dx = get_offset_north(prev_update_location, current_loc);  // get distances from previous update
         float dy = get_offset_east(prev_update_location, current_loc);
 
@@ -132,7 +129,7 @@ void SoaringController::update_thermalling(float loiter_radius)
             log_tuning.lng = current_loc.lng;
             log_tuning.alt = _alt;
         }
-         
+        log_data(); 
         ekf.update(_vario_reading,dx, dy);                              // update the filter
          
         prev_update_location = current_loc;      // save for next time
@@ -140,7 +137,6 @@ void SoaringController::update_thermalling(float loiter_radius)
         _new_data = false;
     }
     else {
-        hal.console->printf_P(PSTR("No new data\n"));
     }
 }
 void SoaringController::update_cruising()
@@ -149,11 +145,9 @@ void SoaringController::update_cruising()
 }
 void SoaringController::update_vario()
 {   
-    //hal.console->printf_P(PSTR("Updating vario . . .\n"));
     Location current_loc;
     _ahrs.get_position(current_loc);
     _alt = current_loc.alt/100.0f;
-    //hal.console->printf_P(PSTR("    new alt %f last %f %u\n"),_alt, _last_alt, _alt==_last_alt);
     if (!(_alt==_last_alt)) {
         float dhdt = 1000.0*(_alt - _last_alt)/(hal.scheduler->millis()-_prev_vario_update_time);
         // Correct for aircraft sink
@@ -163,7 +157,6 @@ void SoaringController::update_vario()
             aspd = 0.5f*(aparm.airspeed_min+aparm.airspeed_max); //
         }
         _vario_reading = correct_netto_rate(dhdt, _ahrs.roll, aspd);
-        //hal.console->printf_P(PSTR("Vario    %f %f\n"),dhdt,_vario_reading);
         _last_alt = _alt;
         _prev_vario_update_time = hal.scheduler->millis();
         _new_data=true;
@@ -213,13 +206,13 @@ float SoaringController::McCready(float alt) {
     return -1.0; // never happens   
  }
         
-        // log the contents of the log_tuning structure to dataflash
-void SoaringController::log_data(DataFlash_Class &dataflash, uint8_t msgid)
+// log the contents of the log_tuning structure to dataflash
+void SoaringController::log_data()
 {
     log_tuning.head1 = HEAD_BYTE1;
     log_tuning.head2 = HEAD_BYTE2;
-    log_tuning.msgid = msgid;
-	dataflash.WriteBlock(&log_tuning, sizeof(log_tuning));
+    log_tuning.msgid = _msgid;
+    _dataflash->WriteBlock(&log_tuning, sizeof(log_tuning));
 }
 
     

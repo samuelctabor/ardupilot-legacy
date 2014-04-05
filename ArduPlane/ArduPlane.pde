@@ -331,7 +331,7 @@ static AP_Navigation *nav_controller = &L1_controller;
 // selected navigation controller
 static AP_SpdHgtControl *SpdHgt_Controller = &TECS_controller;
 
-static SoaringController soaring_controller(ahrs, SpdHgt_Controller, aparm);
+static SoaringController soaring_controller(ahrs, SpdHgt_Controller, aparm, &DataFlash, LOG_THERMAL_MSG);
 ////////////////////////////////////////////////////////////////////////////////
 // Analog Inputs
 ////////////////////////////////////////////////////////////////////////////////

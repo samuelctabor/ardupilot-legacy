@@ -7,6 +7,7 @@ Provides a layer between the thermal centring algorithm and the main code for ma
 
 #include <AP_AHRS.h>
 #include <AP_Param.h>
+#include <DataFlash.h>
 #include "MatrixMath.h"
 #include "math.h"
 #include "ExtendedKalmanFilter.h"
@@ -64,6 +65,8 @@ class SoaringController
  float _alt;
  bool _new_data;
  float _loiter_rad; // Loiter radius passed in
+ uint8_t _msgid;
+ DataFlash_Class* _dataflash;
  float correct_netto_rate(float climb_rate, float phi, float aspd);
  float McCready(float alt);
  protected:
@@ -72,18 +75,23 @@ class SoaringController
   AP_Float thermal_q;
   AP_Float thermal_r;
   public:
-  SoaringController(AP_AHRS &ahrs, AP_SpdHgtControl *&spdHgt, const AP_Vehicle::FixedWing &parms) :
+  SoaringController(AP_AHRS &ahrs, AP_SpdHgtControl *&spdHgt, const AP_Vehicle::FixedWing &parms, DataFlash_Class* dataflash, uint8_t msgid) :
     _ahrs(ahrs),
     aparm(parms),
-    _spdHgt(spdHgt)
+    _spdHgt(spdHgt),
+    _dataflash(dataflash),
+    _msgid(msgid)
     {
         AP_Param::setup_object_defaults(this, var_info);
     }
+    
+    
   // this supports the TECS_* user settable parameters
   static const struct AP_Param::GroupInfo var_info[];
   void get_target(Location & wp);
   bool suppress_throttle();
-  void log_data(DataFlash_Class &dataflash, uint8_t msgid);
+  //void log_data(DataFlash_Class &dataflash, uint8_t msgid);
+  void log_data();
   bool check_thermal_criteria();
   bool check_cruise_criteria();
   void init_thermalling();
