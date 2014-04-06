@@ -24,7 +24,7 @@ Provides a layer between the thermal centring algorithm and the main code for ma
 #define INITIAL_RADIUS_COVARIANCE 2500.0
 #define INITIAL_POSITION_COVARIANCE 300.0
 #define MIN_THERMAL_TIME_MS  60000
-#define MIN_CRUISE_TIME_MS  2000
+#define MIN_CRUISE_TIME_MS  120000
 class SoaringController
 {
    

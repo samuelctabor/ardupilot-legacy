@@ -15,70 +15,36 @@
  // When we come out of thermal mode.
  static FlightMode previous_control_mode;
  
- // Keep track of the waypoint so we can restore after coming out of thermal mode.
- static struct Location prev_next_wp;
- 
- 
  static void update_soaring() {
-   static FlightMode new_mode;
+   soaring_controller.update_vario();
    switch (control_mode)
    {
      case AUTO:
      case FLY_BY_WIRE_B:
-        // Test for switch into thermalling mode
-        new_mode = thermal(control_mode);
-        if (new_mode != control_mode) {
-          //set_mode(new_mode);  //rather than use set_mode, do operations here to allow the waypoint to be setup in thermal()
-          control_mode = new_mode;
-          //crash_timer = 0;
-        }
-        break;
+       // Test for switch into thermalling mode
+       soaring_controller.update_cruising();
+
+       if (soaring_controller.check_thermal_criteria()) {
+         hal.console->printf_P(PSTR("Thermal detected, entering loiter\n"));
+         soaring_controller.init_thermalling();
+         previous_control_mode = control_mode;
+         set_mode(LOITER);
+         soaring_controller.get_target(next_WP_loc); // ahead on flight path
+       }
+       break;
      case LOITER:
-        // Update filter or switch back to AUTO
-        new_mode = cruise(control_mode);
-        if (new_mode != control_mode) {
-          set_mode(new_mode);
-        }
-        break;
-   }
- }
-   
- // Check to see if see if we should be thermalling
- static FlightMode thermal(FlightMode current_control_mode) {
-   soaring_controller.update_vario();
-   soaring_controller.update_cruising();
-   FlightMode calculated_control_mode = current_control_mode;
+       // Update thermal estimate abd check for switch back to AUTO
+       soaring_controller.update_thermalling(g.loiter_radius);  // Update estimate
 
-   if (soaring_controller.check_thermal_criteria()) {
-       hal.console->printf_P(PSTR("Thermal detected, entering loiter\n"));
-       soaring_controller.init_thermalling();
-       previous_control_mode = current_control_mode;
-       
-       prev_next_wp = next_WP_loc;
-       calculated_control_mode =  LOITER;
+       if (soaring_controller.check_cruise_criteria()) {
+         // Exit as soon as thermal state estimate deteriorates
+         soaring_controller.init_cruising();
+         set_mode(previous_control_mode);
+       }
+       else {
+         // still in thermal - need to update the wp location
+         soaring_controller.get_target(next_WP_loc); 
+       }
+       break;
    }
-   return calculated_control_mode;
  }
- 
- // Check to see if we've topped out of a thermal and 
- // Should transition to cruise (or rather the previous control mode).
- static FlightMode cruise(FlightMode current_control_mode) {
-   soaring_controller.update_vario();
-   soaring_controller.update_thermalling(g.loiter_radius);
-   FlightMode calculated_control_mode = current_control_mode;  // default  behaviour is to keep current mode
-
-   if (soaring_controller.check_cruise_criteria()) {
-     // Exit as soon as thermal state estimate deteriorates
-     soaring_controller.init_cruising();
-     calculated_control_mode =  previous_control_mode;
-     next_WP_loc = prev_next_wp;    // continue to the waypoint being used before thermal mode
-   }
-   else {
-     // still in thermal - need to update the wp location and update the filter according to new measurement
-     soaring_controller.get_target(next_WP_loc); 
-   }
-   return calculated_control_mode;
- }
- 
- 
- 
