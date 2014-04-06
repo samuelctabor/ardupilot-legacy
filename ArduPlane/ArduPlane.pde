@@ -754,6 +754,7 @@ static const AP_Scheduler::Task scheduler_tasks[] PROGMEM = {
     { compass_save,        3000,   2500 },
     { update_logging1,        5,   1700 },
     { update_logging2,        5,   1700 },
+    { update_soaring,        10,   4500 },
 };
 
 // setup the var_info table
@@ -1209,27 +1210,14 @@ static void update_flight_mode(void)
         // hold_course is only used in takeoff and landing
         steer_state.hold_course_cd = -1;
     }
-    static FlightMode new_mode;
     switch (effective_mode) 
     {
     case AUTO:
-         // Test for switch into thermalling mode
-         new_mode = thermal(control_mode);
-         if (new_mode != control_mode) {
-           //set_mode(new_mode);  //rather than use set_mode, do operations here to allow the waypoint to be setup in thermal()
-           control_mode = new_mode;
-           //crash_timer = 0;
-        }
         handle_auto_mode();
         break;
 
     case RTL:
     case LOITER:
-        // Update filter or switch back to AUTO
-        new_mode = cruise(control_mode);
-        if (new_mode != control_mode) {
-            set_mode(new_mode);
-         }
     case GUIDED:
         calc_nav_roll();
         calc_nav_pitch();

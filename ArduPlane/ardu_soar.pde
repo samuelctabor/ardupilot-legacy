@@ -18,6 +18,31 @@
  // Keep track of the waypoint so we can restore after coming out of thermal mode.
  static struct Location prev_next_wp;
  
+ 
+ static void update_soaring() {
+   static FlightMode new_mode;
+   switch (control_mode)
+   {
+     case AUTO:
+     case FLY_BY_WIRE_B:
+        // Test for switch into thermalling mode
+        new_mode = thermal(control_mode);
+        if (new_mode != control_mode) {
+          //set_mode(new_mode);  //rather than use set_mode, do operations here to allow the waypoint to be setup in thermal()
+          control_mode = new_mode;
+          //crash_timer = 0;
+        }
+        break;
+     case LOITER:
+        // Update filter or switch back to AUTO
+        new_mode = cruise(control_mode);
+        if (new_mode != control_mode) {
+          set_mode(new_mode);
+        }
+        break;
+   }
+ }
+   
  // Check to see if see if we should be thermalling
  static FlightMode thermal(FlightMode current_control_mode) {
    soaring_controller.update_vario();
