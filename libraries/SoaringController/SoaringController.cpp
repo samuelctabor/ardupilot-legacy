@@ -53,12 +53,12 @@ bool SoaringController::suppress_throttle()
 
 bool SoaringController::check_thermal_criteria()
 {
-    return((( hal.scheduler->millis() - _cruise_start_time_ms ) > MIN_CRUISE_TIME_MS) && _vario_reading > thermal_vspeed);
+    return(soar_active && (( hal.scheduler->millis() - _cruise_start_time_ms ) > MIN_CRUISE_TIME_MS) && _vario_reading > thermal_vspeed);
 }
 bool SoaringController::check_cruise_criteria()
 {
     float thermalability = (ekf.X[0]*exp(-pow(_loiter_rad/ekf.X[1],2)))-EXPECTED_THERMALLING_SINK; 
-    if ((hal.scheduler->millis()-_thermal_start_time_ms) > MIN_THERMAL_TIME_MS && thermalability < McCready(_alt)) {
+    if (soar_active && (hal.scheduler->millis()-_thermal_start_time_ms) > MIN_THERMAL_TIME_MS && thermalability < McCready(_alt)) {
         hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,_alt,McCready(_alt));
         return true;
     }
