@@ -53,7 +53,7 @@ print_log_menu(void)
         PLOG(CAMERA);
         PLOG(RC);
         PLOG(SONAR);
-		PLOG(THERMAL);
+	PLOG(THERMAL);
  #undef PLOG
     }
 
@@ -147,7 +147,7 @@ select_logs(uint8_t argc, const Menu::arg *argv)
         TARG(CAMERA);
         TARG(RC);
         TARG(SONAR);
-		TARG(THERMAL);
+	TARG(THERMAL);
  #undef TARG
     }
 
@@ -540,13 +540,6 @@ static void Log_Write_Airspeed(void)
 }
 
 
-// Write a THERMAL packet
-static void Log_Write_Thermal(void)
-{   
-    soaring_controller.log_data();
-}
-
-
 static const struct LogStructure log_structure[] PROGMEM = {
     LOG_COMMON_STRUCTURES,
     { LOG_ATTITUDE_MSG, sizeof(log_Attitude),       
@@ -628,7 +621,6 @@ static void Log_Write_IMU() {}
 static void Log_Write_RC() {}
 static void Log_Write_Airspeed(void) {}
 static void Log_Write_Baro(void) {}
-static void Log_Write_Thermal(void) {}
 
 
 static int8_t process_logs(uint8_t argc, const Menu::arg *argv) {
