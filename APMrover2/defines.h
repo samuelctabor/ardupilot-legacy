@@ -28,17 +28,6 @@ enum ch7_option {
 #define T6 1000000
 #define T7 10000000
 
-// GPS type codes - use the names, not the numbers
-#define GPS_PROTOCOL_NONE	-1
-#define GPS_PROTOCOL_NMEA	0
-#define GPS_PROTOCOL_SIRF	1
-#define GPS_PROTOCOL_UBLOX	2
-#define GPS_PROTOCOL_IMU	3
-#define GPS_PROTOCOL_MTK	4
-#define GPS_PROTOCOL_HIL	5
-#define GPS_PROTOCOL_MTK19	6
-#define GPS_PROTOCOL_AUTO	7
-
 // HIL enumerations
 #define HIL_MODE_DISABLED			0
 #define HIL_MODE_SENSORS			1
@@ -159,16 +148,19 @@ enum mode {
 #define CONFIG_INS_PX4     4
 #define CONFIG_INS_FLYMAPLE 5
 #define CONFIG_INS_L3G4200D 6
+#define CONFIG_INS_VRBRAIN 7
 
 // barometer driver types
 #define AP_BARO_BMP085   1
 #define AP_BARO_MS5611   2
 #define AP_BARO_PX4      3
 #define AP_BARO_HIL      4
+#define AP_BARO_VRBRAIN  5
 
 // compass driver types
 #define AP_COMPASS_HMC5843   1
 #define AP_COMPASS_PX4       2
 #define AP_COMPASS_HIL       3
+#define AP_COMPASS_VRBRAIN   4
 
 #endif // _DEFINES_H

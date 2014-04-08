@@ -43,14 +43,15 @@ static void update_pitch_servo(float pitch)
 
     // add slew rate limit
     if (g.pitch_slew_time > 0.02f) {
-        uint16_t max_change = 0.02f * 18000 / g.yaw_slew_time;
+        uint16_t max_change = 0.02f * 18000 / g.pitch_slew_time;
         if (max_change < 1) {
             max_change = 1;
         }
         new_servo_out = constrain_float(new_servo_out,
-                                        channel_yaw.servo_out - max_change, 
-                                        channel_yaw.servo_out + max_change);
+                                        channel_pitch.servo_out - max_change, 
+                                        channel_pitch.servo_out + max_change);
     }
+    channel_pitch.servo_out = new_servo_out;
 
     channel_pitch.calc_pwm();
     channel_pitch.output();
@@ -219,11 +220,8 @@ static void update_tracking(void)
 
     // update our position if we have at least a 2D fix
     // REVISIT: what if we lose lock during a mission and the antenna is moving?
-    if (g_gps->status() >= GPS::GPS_OK_FIX_2D) {
-        current_loc.lat = g_gps->latitude;
-        current_loc.lng = g_gps->longitude;
-        current_loc.alt = g_gps->altitude_cm;
-        current_loc.options = 0; // Absolute altitude
+    if (gps.status() >= AP_GPS::GPS_OK_FIX_2D) {
+        current_loc = gps.location();
     }
 
     // calculate the bearing to the vehicle

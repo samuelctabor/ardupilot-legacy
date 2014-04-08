@@ -662,48 +662,49 @@ void DataFlash_Class::Log_Write_Parameters(void)
 
 
 // Write an GPS packet
-void DataFlash_Class::Log_Write_GPS(const GPS *gps, int32_t relative_alt)
+void DataFlash_Class::Log_Write_GPS(const AP_GPS &gps, int32_t relative_alt)
 {
+    const struct Location &loc = gps.location(0);
     struct log_GPS pkt = {
         LOG_PACKET_HEADER_INIT(LOG_GPS_MSG),
-    	status        : (uint8_t)gps->status(),
-    	gps_week_ms   : gps->time_week_ms,
-    	gps_week      : gps->time_week,
-        num_sats      : gps->num_sats,
-        hdop          : gps->hdop,
-        latitude      : gps->latitude,
-        longitude     : gps->longitude,
+    	status        : (uint8_t)gps.status(0),
+    	gps_week_ms   : gps.time_week_ms(0),
+    	gps_week      : gps.time_week(0),
+        num_sats      : gps.num_sats(0),
+        hdop          : gps.get_hdop(0),
+        latitude      : loc.lat,
+        longitude     : loc.lng,
         rel_altitude  : relative_alt,
-        altitude      : gps->altitude_cm,
-        ground_speed  : gps->ground_speed_cm,
-        ground_course : gps->ground_course_cd,
-        vel_z         : gps->velocity_down(),
+        altitude      : loc.alt,
+        ground_speed  : (uint32_t)(gps.ground_speed(0) * 100),
+        ground_course : gps.ground_course_cd(0),
+        vel_z         : gps.velocity(0).z,
         apm_time      : hal.scheduler->millis()
     };
     WriteBlock(&pkt, sizeof(pkt));
-}
-
-// Write a GPS2 packet
-void DataFlash_Class::Log_Write_GPS2(const GPS *gps)
-{
-    struct log_GPS2 pkt = {
-        LOG_PACKET_HEADER_INIT(LOG_GPS2_MSG),
-    	status        : (uint8_t)gps->status(),
-    	gps_week_ms   : gps->time_week_ms,
-    	gps_week      : gps->time_week,
-        num_sats      : gps->num_sats,
-        hdop          : gps->hdop,
-        latitude      : gps->latitude,
-        longitude     : gps->longitude,
-        altitude      : gps->altitude_cm,
-        ground_speed  : gps->ground_speed_cm,
-        ground_course : gps->ground_course_cd,
-        vel_z         : gps->velocity_down(),
-        apm_time      : hal.scheduler->millis(),
-        dgps_numch    : 0,
-        dgps_age      : 0
-    };
-    WriteBlock(&pkt, sizeof(pkt));
+#if HAL_CPU_CLASS > HAL_CPU_CLASS_16
+    if (gps.num_sensors() > 1) {
+        const struct Location &loc2 = gps.location(1);
+        struct log_GPS2 pkt2 = {
+            LOG_PACKET_HEADER_INIT(LOG_GPS2_MSG),
+            status        : (uint8_t)gps.status(1),
+            gps_week_ms   : gps.time_week_ms(1),
+            gps_week      : gps.time_week(1),
+            num_sats      : gps.num_sats(1),
+            hdop          : gps.get_hdop(1),
+            latitude      : loc2.lat,
+            longitude     : loc2.lng,
+            altitude      : loc2.alt,
+            ground_speed  : (uint32_t)(gps.ground_speed(1)*100),
+            ground_course : gps.ground_course_cd(1),
+            vel_z         : gps.velocity(1).z,
+            apm_time      : hal.scheduler->millis(),
+            dgps_numch    : 0,
+            dgps_age      : 0
+        };
+        WriteBlock(&pkt2, sizeof(pkt2));
+    }
+#endif
 }
 
 // Write an RCIN packet
@@ -936,24 +937,25 @@ void DataFlash_Class::Log_Write_EKF(AP_AHRS_NavEKF &ahrs)
     WriteBlock(&pkt3, sizeof(pkt3));
 	
 	// Write fourth EKF packet
-	Vector3f velVar;
-	Vector3f posVar;
+    float velVar;
+    float posVar;
+    float hgtVar;
 	Vector3f magVar;
 	float tasVar;
-    ahrs.get_NavEKF().getVariances(velVar, posVar, magVar, tasVar);
+    Vector2f offset;
+    ahrs.get_NavEKF().getVariances(velVar, posVar, hgtVar, magVar, tasVar, offset);
     struct log_EKF4 pkt4 = {
         LOG_PACKET_HEADER_INIT(LOG_EKF4_MSG),
         time_ms : hal.scheduler->millis(),
-        sqrtvarVN : (int16_t)(100*sqrtf(velVar.x)),
-        sqrtvarVE : (int16_t)(100*sqrtf(velVar.y)),
-        sqrtvarVD : (int16_t)(100*sqrtf(velVar.z)),
-        sqrtvarPN : (int16_t)(100*sqrtf(posVar.x)),
-        sqrtvarPE : (int16_t)(100*sqrtf(posVar.y)),
-        sqrtvarPD : (int16_t)(100*sqrtf(posVar.z)),
-        sqrtvarMX : (int16_t)(sqrtf(magVar.x)),
-        sqrtvarMY : (int16_t)(sqrtf(magVar.y)),
-        sqrtvarMZ : (int16_t)(sqrtf(magVar.z)),
-        sqrtvarVT : (int16_t)(100*sqrtf(tasVar))
+        sqrtvarV : (int16_t)(100*velVar),
+        sqrtvarP : (int16_t)(100*posVar),
+        sqrtvarH : (int16_t)(100*hgtVar),
+        sqrtvarMX : (int16_t)(100*magVar.x),
+        sqrtvarMY : (int16_t)(100*magVar.y),
+        sqrtvarMZ : (int16_t)(100*magVar.z),
+        sqrtvarVT : (int16_t)(100*tasVar),
+        offsetNorth : (int8_t)(offset.x),
+        offsetEast : (int8_t)(offset.y)
     };
     WriteBlock(&pkt4, sizeof(pkt4));
 }

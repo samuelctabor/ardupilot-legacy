@@ -1,22 +1,16 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-static int32_t get_RTL_alt()
-{
-    if(g.rtl_altitude <= 0) {
-		return min(current_loc.alt, RTL_ALT_MAX);
-    }else if (g.rtl_altitude < current_loc.alt) {
-		return min(current_loc.alt, RTL_ALT_MAX);
-    }else{
-        return g.rtl_altitude;
-    }
-}
-
 // run this at setup on the ground
 // -------------------------------
 static void init_home()
 {
     set_home_is_set(true);
-    ahrs.set_home(g_gps->latitude, g_gps->longitude, 0);
+
+    // copter uses 0 home altitude
+    Location loc = gps.location();
+    loc.alt = 0;
+
+    ahrs.set_home(loc);
 
     inertial_nav.setup_home_position();
 

@@ -28,7 +28,7 @@ public:
 
         // Misc
         //
-        k_param_log_bitmask = 10,
+        k_param_log_bitmask_old = 10, // unused
         k_param_num_resets,
         k_param_reset_switch_chan,
         k_param_initial_mode,
@@ -46,6 +46,11 @@ public:
 
         // braking
         k_param_braking_percent = 30,
+        k_param_braking_speederr,
+
+        // misc2
+        k_param_log_bitmask = 40,
+        k_param_gps,
 
 
         // 110: Telemetry control
@@ -184,7 +189,7 @@ public:
 
     // Misc
     //
-    AP_Int16    log_bitmask;
+    AP_Int32    log_bitmask;
     AP_Int16    num_resets;
     AP_Int8	    reset_switch_chan;
     AP_Int8     initial_mode;
@@ -194,6 +199,7 @@ public:
 
     // braking
     AP_Int8     braking_percent;
+    AP_Float    braking_speederr;
 
 	// Telemetry control
 	//
@@ -230,14 +236,14 @@ public:
     RC_Channel_aux	rc_6;
     RC_Channel_aux	rc_7;
     RC_Channel_aux	rc_8;
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
     RC_Channel_aux rc_9;
 #endif
-#if CONFIG_HAL_BOARD == HAL_BOARD_APM2 || CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_APM2 || CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
     RC_Channel_aux rc_10;
     RC_Channel_aux rc_11;
 #endif
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
     RC_Channel_aux rc_12;
     RC_Channel_aux rc_13;
     RC_Channel_aux rc_14;
@@ -295,14 +301,14 @@ public:
         rc_6(CH_6),
         rc_7(CH_7),
         rc_8(CH_8),
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
         rc_9                                    (CH_9),
 #endif
-#if CONFIG_HAL_BOARD == HAL_BOARD_APM2 || CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_APM2 || CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
         rc_10                                   (CH_10),
         rc_11                                   (CH_11),
 #endif
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
         rc_12                                   (CH_12),
         rc_13                                   (CH_13),
         rc_14                                   (CH_14),

@@ -18,7 +18,7 @@
 
 extern const AP_HAL::HAL& hal;
 
-LogReader::LogReader(AP_InertialSensor &_ins, AP_Baro_HIL &_baro, AP_Compass_HIL &_compass, GPS *&_gps, AP_Airspeed &_airspeed) :
+LogReader::LogReader(AP_InertialSensor &_ins, AP_Baro_HIL &_baro, AP_Compass_HIL &_compass, AP_GPS &_gps, AP_Airspeed &_airspeed) :
     vehicle(VEHICLE_UNKNOWN),
     fd(-1),
     ins(_ins),
@@ -373,19 +373,56 @@ bool LogReader::update(uint8_t &type)
         }
         memcpy(&msg, data, sizeof(msg));
         wait_timestamp(msg.apm_time);
-        gps->setHIL(msg.status==3?GPS::FIX_3D:GPS::FIX_NONE,
-                    msg.apm_time,
-                    msg.latitude*1.0e-7f, 
-                    msg.longitude*1.0e-7f, 
-                    msg.altitude*1.0e-2f,
-                    msg.ground_speed*1.0e-2f, 
-                    msg.ground_course*1.0e-2f, 
-                    0, 
-                    msg.num_sats);
+        Location loc;
+        loc.lat = msg.latitude;
+        loc.lng = msg.longitude;
+        loc.alt = msg.altitude;
+        loc.options = 0;
+
+        Vector3f vel(msg.ground_speed*0.01f*cosf(radians(msg.ground_course*0.01f)),
+                     msg.ground_speed*0.01f*sinf(radians(msg.ground_course*0.01f)),
+                     msg.vel_z);
+        gps.setHIL(0, (AP_GPS::GPS_Status)msg.status,
+                   msg.apm_time,
+                   loc,
+                   vel,
+                   msg.num_sats,
+                   msg.hdop,
+                   msg.vel_z != 0);
         if (msg.status == 3 && ground_alt_cm == 0) {
             ground_alt_cm = msg.altitude;
         }
         rel_altitude = msg.rel_altitude*0.01f;
+        break;
+    }
+
+    case LOG_GPS2_MSG: {
+        struct log_GPS2 msg;
+        if(sizeof(msg) != f.length) {
+            printf("Bad GPS2 length\n");
+            exit(1);
+        }
+        memcpy(&msg, data, sizeof(msg));
+        wait_timestamp(msg.apm_time);
+        Location loc;
+        loc.lat = msg.latitude;
+        loc.lng = msg.longitude;
+        loc.alt = msg.altitude;
+        loc.options = 0;
+
+        Vector3f vel(msg.ground_speed*0.01f*cosf(radians(msg.ground_course*0.01f)),
+                     msg.ground_speed*0.01f*sinf(radians(msg.ground_course*0.01f)),
+                     msg.vel_z);
+        gps.setHIL(1, (AP_GPS::GPS_Status)msg.status,
+                   msg.apm_time,
+                   loc,
+                   vel,
+                   msg.num_sats,
+                   msg.hdop,
+                   msg.vel_z != 0);
+        if (msg.status == 3 && ground_alt_cm == 0) {
+            ground_alt_cm = msg.altitude;
+        }
         break;
     }
 

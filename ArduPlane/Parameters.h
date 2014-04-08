@@ -104,6 +104,7 @@ public:
         k_param_rssi_range,
         k_param_flapin_channel,
         k_param_flaperon_output,
+        k_param_gps,
 
         // 100: Arming parameters
         k_param_arming = 100,
@@ -447,14 +448,14 @@ public:
     RC_Channel_aux rc_6;
     RC_Channel_aux rc_7;
     RC_Channel_aux rc_8;
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
     RC_Channel_aux rc_9;
 #endif
-#if CONFIG_HAL_BOARD == HAL_BOARD_APM2 || CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_APM2 || CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
     RC_Channel_aux rc_10;
     RC_Channel_aux rc_11;
 #endif
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
     RC_Channel_aux rc_12;
     RC_Channel_aux rc_13;
     RC_Channel_aux rc_14;
@@ -472,14 +473,14 @@ public:
         rc_6                                    (CH_6),
         rc_7                                    (CH_7),
         rc_8                                    (CH_8),
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
         rc_9                                    (CH_9),
 #endif
-#if CONFIG_HAL_BOARD == HAL_BOARD_APM2 || CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_APM2 || CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
         rc_10                                   (CH_10),
         rc_11                                   (CH_11),
 #endif
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
         rc_12                                   (CH_12),
         rc_13                                   (CH_13),
         rc_14                                   (CH_14),
