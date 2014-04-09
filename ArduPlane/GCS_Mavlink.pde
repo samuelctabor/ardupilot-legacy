@@ -1611,8 +1611,9 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
         barometer.setHIL(packet.alt*0.001f);
         compass.setHIL(packet.roll, packet.pitch, packet.yaw);
         //airspeed.disable();
-		if (airspeed.enabled()) {
-          airspeed.set_HIL(vel/100.0);
+        if (airspeed.enabled()) {
+          float aspd = pythagorous3(packet.vx, packet.vy, packet.vz);
+          airspeed.set_HIL(aspd/100.0);
         }
 
         // cope with DCM getting badly off due to HIL lag
