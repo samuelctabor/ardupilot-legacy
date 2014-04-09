@@ -177,7 +177,12 @@ static void control_failsafe(uint16_t pwm)
         channel_roll->radio_in     = channel_roll->radio_trim;
         channel_pitch->radio_in    = channel_pitch->radio_trim;
         channel_rudder->radio_in   = channel_rudder->radio_trim;
-        channel_throttle->radio_in = channel_throttle->radio_min;
+        if (channel_throttle->get_reverse()) {
+            channel_throttle->radio_in = g.throttle_fs_value + 50;
+        } else {
+            channel_throttle->radio_in = g.throttle_fs_value - 50;
+        }
+
         channel_roll->control_in     = 0;
         channel_pitch->control_in    = 0;
         channel_rudder->control_in   = 0;
