@@ -1,6 +1,6 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-#define THISFIRMWARE "ArduPlane V3.0.0"
+#define THISFIRMWARE "ArduPlane V3.0.1"
 /*
    Lead developer: Andrew Tridgell
  
@@ -1015,13 +1015,15 @@ static void airspeed_ratio_update(void)
  */
 static void update_GPS_50Hz(void)
 {
-    static uint32_t last_gps_reading;
+    static uint32_t last_gps_reading[GPS_MAX_INSTANCES];
     gps.update();
 
-    if (gps.last_message_time_ms() != last_gps_reading) {
-        last_gps_reading = gps.last_message_time_ms();
-        if (should_log(MASK_LOG_GPS)) {
-            Log_Write_GPS();
+    for (uint8_t i=0; i<gps.num_sensors(); i++) {
+        if (gps.last_message_time_ms(i) != last_gps_reading[i]) {
+            last_gps_reading[i] = gps.last_message_time_ms(i);
+            if (should_log(MASK_LOG_GPS)) {
+                Log_Write_GPS(i);
+            }
         }
     }
 }
