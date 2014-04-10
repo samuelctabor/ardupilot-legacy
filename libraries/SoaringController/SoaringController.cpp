@@ -28,7 +28,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: 
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("Q", 2, SoaringController, thermal_q, 0.1f),
+    AP_GROUPINFO("Q", 2, SoaringController, thermal_q, 0.01f),
     
     // @Param: THERMAL_R
     // @DisplayName: Measurement noise
@@ -36,7 +36,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: 
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("R", 3, SoaringController, thermal_r, 0.1f),
+    AP_GROUPINFO("R", 3, SoaringController, thermal_r, 0.45f),
     
     AP_GROUPEND
 };
