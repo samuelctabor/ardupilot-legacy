@@ -149,15 +149,20 @@ void SoaringController::update_vario()
     _ahrs.get_position(current_loc);
     _alt = current_loc.alt/100.0f;
     if (!(_alt==_last_alt)) {
-        float dhdt = 1000.0*(_alt - _last_alt)/(hal.scheduler->millis()-_prev_vario_update_time);
-        // Correct for aircraft sink
+    // Both filtered total energy rates and unfiltered are computed for the thermal switching logic and the EKF
         float aspd;
-        
+        float roll = _ahrs.roll;
         if (!_ahrs.airspeed_estimate(&aspd)) {
             aspd = 0.5f*(aparm.airspeed_min+aparm.airspeed_max); //
         }
-        _vario_reading = correct_netto_rate(dhdt, _ahrs.roll, aspd);
-        _last_alt = _alt;
+        float total_E = _alt+0.5*aspd*aspd/GRAVITY_MSS;                                                                 // Work out total energy                                                 // Feed into the derivative filter
+        float sinkrate = correct_netto_rate(0.0f, (roll+_last_roll)/2, (aspd+_last_aspd)/2);                            // Compute still-air sinkrate
+        _vario_reading = (total_E - _last_total_E)*1000.0/(hal.scheduler->millis()-_prev_vario_update_time) + sinkrate; // Unfiltered netto rate
+        _filtered_vario_reading = 0.9048*_filtered_vario_reading + 0.0952*_vario_reading;                               // Apply low pass 2sec timeconst filter for noise
+        _last_alt = _alt;                                       // Store variables
+        _last_roll=roll;
+        _last_aspd = aspd;
+        _last_total_E = total_E;
         _prev_vario_update_time = hal.scheduler->millis();
         _new_data=true;
     }

@@ -62,8 +62,12 @@ class SoaringController
  //gcs_send_text_P(SEVERITY_LOW, PSTR("Soar initialisation complete"));
  
  float _vario_reading;
+ float _filtered_vario_reading;
  float _last_alt;
  float _alt;
+ float _last_aspd;
+ float _last_roll;
+ float _last_total_E;
  bool _new_data;
  float _loiter_rad; // Loiter radius passed in
  uint8_t _msgid;
