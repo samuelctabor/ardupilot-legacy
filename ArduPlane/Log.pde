@@ -568,8 +568,10 @@ static const struct LogStructure log_structure[] PROGMEM = {
       "ARM", "IHB", "TimeMS,ArmState,ArmChecks" },
     { LOG_AIRSPEED_MSG, sizeof(log_AIRSPEED),
       "ARSP",  "Iffc",     "TimeMS,Airspeed,DiffPress,Temp" },
-    TECS_LOG_FORMAT(LOG_TECS_MSG),
-    THML_LOG_FORMAT(LOG_THERMAL_MSG)
+    THML_LOG_FORMAT(LOG_THERMAL_MSG),
+    { LOG_ATRP_MSG, sizeof(AP_AutoTune::log_ATRP),
+      "ATRP", "IBBcfff",  "TimeMS,Type,State,Servo,Demanded,Achieved,P" },
+    TECS_LOG_FORMAT(LOG_TECS_MSG)
 };
 
 // Read the DataFlash.log memory : Packet Parser
