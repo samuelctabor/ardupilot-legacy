@@ -12,11 +12,10 @@
 // simulation. Remove the leading "/* and trailing "*/" to enable:
 
 #define HIL_MODE            HIL_MODE_SENSORS
-#define SOAR_ACTIVE 0    // Default - disapbled
-#define THERMAL_VSPEED 2 // Default - 2 m/s
-#define THERMAL_Q 0.1 
-#define THERMAL_R 0.1 
 
+# define MOUNT2 DISABLED
+# define MOUNT DISABLED
+# define CAMERA DISABLED
 /*
  *  // HIL_MODE SELECTION
  *  //

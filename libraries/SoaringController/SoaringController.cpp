@@ -12,7 +12,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: boolean
     // @Range: 0 1
     // @User: Advanced
-    AP_GROUPINFO("ACTIVE", 0, SoaringController, soar_active, 0.0f),
+    AP_GROUPINFO("ACTIVE", 0, SoaringController, soar_active, 0),
      
     // @Param: THERMAL_VSPEED
     // @DisplayName: Vertical v-speed
@@ -21,14 +21,22 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Range: 0 10
     // @User: Advanced 
     AP_GROUPINFO("VSPEED", 1, SoaringController, thermal_vspeed, 50.0f),
-    
-    // @Param: THERMAL_Q
+
+    // @Param: THERMAL_Q1
     // @DisplayName: Process noise
-    // @Description: Standard deviation of noise in process
+    // @Description: Standard deviation of noise in process for strength
     // @Units: 
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("Q", 2, SoaringController, thermal_q, 0.01f),
+    AP_GROUPINFO("Q1", 2, SoaringController, thermal_q1, 0.03f),
+        
+    // @Param: THERMAL_Q2
+    // @DisplayName: Process noise
+    // @Description: Standard deviation of noise in process for position and radius
+    // @Units: 
+    // @Range: 0 10
+    // @User: Advanced 
+    AP_GROUPINFO("Q2", 3, SoaringController, thermal_q2, 0.03f),
     
     // @Param: THERMAL_R
     // @DisplayName: Measurement noise
@@ -36,7 +44,56 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: 
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("R", 3, SoaringController, thermal_r, 0.45f),
+    
+    AP_GROUPINFO("R", 4, SoaringController, thermal_r, 0.45f),
+    
+    // @Param: DIST_AHEAD
+    // @DisplayName: Measurement noise
+    // @Description: Standard deviation of noise in measurement
+    // @Units: metres
+    // @Range: 0 100
+    // @User: Advanced 
+    AP_GROUPINFO("DIST_AHEAD", 5, SoaringController, thermal_distance_ahead, 50.0f),
+    
+    // @Param: MIN_THERMAL_S
+    // @DisplayName: Minimum thermalling time
+    // @Description: Minimum number of seconds to spend thermalling
+    // @Units: seconds
+    // @Range: 0 32768
+    // @User: Advanced 
+    AP_GROUPINFO("MIN_THERMAL_S", 6, SoaringController, min_thermal_s, 20),
+    
+    // @Param: MIN_CRUISE_S
+    // @DisplayName: Minimum cruising time
+    // @Description: Minimum number of seconds to spend cruising
+    // @Units: seconds
+    // @Range: 0 32768
+    // @User: Advanced 
+    AP_GROUPINFO("MIN_CRUISE_S", 7, SoaringController, min_cruise_s, 60),
+    
+    // @Param: POLAR_CD0
+    // @DisplayName: Zero lift drag coef.
+    // @Description: Zero lift drag coefficient
+    // @Units: Non-dim.
+    // @Range: 0 0.5
+    // @User: Advanced 
+    AP_GROUPINFO("POLAR_CD0", 8, SoaringController, polar_CD0, 0.028),
+    
+    // @Param: POLAR_B
+    // @DisplayName: Induced drag coeffient
+    // @Description: Induced drag coeffient
+    // @Units: Non-dim.
+    // @Range: 0 0.5
+    // @User: Advanced 
+    AP_GROUPINFO("POLAR_B", 9, SoaringController, polar_B, 0.04),
+    
+    // @Param: POLAR_K
+    // @DisplayName: Cl factor
+    // @Description: Cl factor 2*m*g/(rho*S)
+    // @Units: m^2 s^-2
+    // @Range: 0 0.5
+    // @User: Advanced 
+    AP_GROUPINFO("POLAR_K", 10, SoaringController, polar_K, 23.6),
     
     AP_GROUPEND
 };
@@ -53,12 +110,12 @@ bool SoaringController::suppress_throttle()
 
 bool SoaringController::check_thermal_criteria()
 {
-    return(soar_active && (( hal.scheduler->millis() - _cruise_start_time_ms ) > MIN_CRUISE_TIME_MS) && _vario_reading > thermal_vspeed);
+    return(soar_active && (( hal.scheduler->millis() - _cruise_start_time_ms ) > ((unsigned)min_cruise_s*1000)) && _vario_reading > thermal_vspeed);
 }
 bool SoaringController::check_cruise_criteria()
 {
     float thermalability = (ekf.X[0]*exp(-pow(_loiter_rad/ekf.X[1],2)))-EXPECTED_THERMALLING_SINK; 
-    if (soar_active && (hal.scheduler->millis()-_thermal_start_time_ms) > MIN_THERMAL_TIME_MS && thermalability < McCready(_alt)) {
+    if (soar_active && (hal.scheduler->millis()-_thermal_start_time_ms) > ((unsigned)min_thermal_s*1000) && thermalability < McCready(_alt)) {
         hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,_alt,McCready(_alt));
         return true;
     }
@@ -68,11 +125,12 @@ void SoaringController::init_thermalling()
 {
     //Calc filter matrices - so that changes to parameters can be updated by switching in and out of thermal mode
     float r[1][1] = {{pow(thermal_r,2)}};
-    float cov_q = pow(thermal_q,2); //State covariance
-    float q[N][N] = {{cov_q, 0, 0, 0},{0, cov_q, 0, 0},{0,0, cov_q,0},{0,0,0,cov_q}};
+    float cov_q1 = pow(thermal_q1,2); //State covariance
+    float cov_q2 = pow(thermal_q2,2); //State covariance
+    float q[N][N] = {{cov_q1, 0, 0, 0},{0, cov_q2, 0, 0},{0,0, cov_q2,0},{0,0,0,cov_q2}};
          
-    // New state vector filter will be reset. Thermal location is placed 10m in front of a/c 
-    float xr[] = {INITIAL_THERMAL_STRENGTH, INITIAL_THERMAL_RADIUS, THERMAL_DISTANCE_AHEAD*cos(_ahrs.yaw), THERMAL_DISTANCE_AHEAD*sin(_ahrs.yaw)};      
+    // New state vector filter will be reset. Thermal location is placed in front of a/c 
+    float xr[] = {INITIAL_THERMAL_STRENGTH, INITIAL_THERMAL_RADIUS, thermal_distance_ahead*cos(_ahrs.yaw), thermal_distance_ahead*sin(_ahrs.yaw)};      
     // Also reset covariance matrix p so filter is not affected by previous data       
     ekf.reset(xr,p,q,r);
     _ahrs.get_position(_prev_update_location);
@@ -175,9 +233,9 @@ float SoaringController::correct_netto_rate(float climb_rate, float phi, float a
     float C2;   // C2 = CDi0/CL0 = B*CL0
     float netto_rate;
     float cosphi;
-    CL0 = CL_FACTOR/(aspd*aspd);  
-    C1 = CD0/CL0;  // constant describing expected angle to overcome zero-lift drag
-    C2 = B*CL0;    // constant describing expected angle to overcome lift induced drag at zero bank
+    CL0 = polar_K/(aspd*aspd);  
+    C1 = polar_CD0/CL0;  // constant describing expected angle to overcome zero-lift drag
+    C2 = polar_B*CL0;    // constant describing expected angle to overcome lift induced drag at zero bank
 
     cosphi = (1 - phi*phi/2); // first two terms of mclaurin series for cos(phi)
     netto_rate = climb_rate + aspd*(C1 + C2/(cosphi*cosphi));  // effect of aircraft drag removed

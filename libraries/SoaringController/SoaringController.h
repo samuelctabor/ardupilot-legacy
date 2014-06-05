@@ -12,19 +12,12 @@ Provides a layer between the thermal centring algorithm and the main code for ma
 #include "math.h"
 #include "ExtendedKalmanFilter.h"
 #include <AP_SpdHgtControl.h>
-#define N 4
-#define THERMAL_DISTANCE_AHEAD 50.0
 #define EXPECTED_THERMALLING_SINK 0.9
-#define CD0 0.0283
-#define B 0.04
-#define CL_FACTOR 109.5  // 109.5 = 2*W/(rho*S)=2*6.5*9.81/(1.2*0.98)
 #define INITIAL_THERMAL_STRENGTH 2.0
 #define INITIAL_THERMAL_RADIUS 300.0
 #define INITIAL_STRENGTH_COVARIANCE 2.0
 #define INITIAL_RADIUS_COVARIANCE 2500.0
 #define INITIAL_POSITION_COVARIANCE 300.0
-#define MIN_THERMAL_TIME_MS  60000
-#define MIN_CRUISE_TIME_MS  120000
 class SoaringController
 {
    
@@ -75,10 +68,18 @@ class SoaringController
  float correct_netto_rate(float climb_rate, float phi, float aspd);
  float McCready(float alt);
  protected:
-   AP_Float soar_active;
+  AP_Int8 soar_active;
   AP_Float thermal_vspeed;
-  AP_Float thermal_q;
+  AP_Float thermal_q1;
+  AP_Float thermal_q2;
   AP_Float thermal_r;
+  AP_Float thermal_distance_ahead;
+  AP_Int16 min_thermal_s;
+  AP_Int16 min_cruise_s;
+  AP_Float polar_CD0;
+  AP_Float polar_B;
+  AP_Float polar_K;
+  
   public:
   SoaringController(AP_AHRS &ahrs, AP_SpdHgtControl *&spdHgt, const AP_Vehicle::FixedWing &parms, DataFlash_Class* dataflash, uint8_t msgid) :
     _ahrs(ahrs),
