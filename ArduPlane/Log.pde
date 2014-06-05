@@ -539,7 +539,6 @@ static void Log_Write_Airspeed(void)
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
 
-
 static const struct LogStructure log_structure[] PROGMEM = {
     LOG_COMMON_STRUCTURES,
     { LOG_ATTITUDE_MSG, sizeof(log_Attitude),       
@@ -623,7 +622,6 @@ static void Log_Write_IMU() {}
 static void Log_Write_RC() {}
 static void Log_Write_Airspeed(void) {}
 static void Log_Write_Baro(void) {}
-
 
 static int8_t process_logs(uint8_t argc, const Menu::arg *argv) {
     return 0;

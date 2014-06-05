@@ -504,10 +504,6 @@ const AP_Param::Info var_info[] PROGMEM = {
     // @Values: 0:Manual,1:CIRCLE,2:STABILIZE,3:TRAINING,4:ACRO,5:FBWA,6:FBWB,7:CRUISE,8:AUTOTUNE,10:Auto,11:RTL,12:Loiter,15:Guided
     // @User: Standard
     GSCALAR(flight_mode6,           "FLTMODE6",       FLIGHT_MODE_6),
-    
-    //
-    
-  
 
     // @Param: LIM_ROLL_CD
     // @DisplayName: Maximum Bank Angle
@@ -1001,7 +997,7 @@ const AP_Param::Info var_info[] PROGMEM = {
     // @Group: SOAR_
     // @Path: ../libraries/SoaringController/SoaringController.cpp
     GOBJECT(soaring_controller,         "SOAR_",   SoaringController),
-    
+
     AP_VAREND
 };
 

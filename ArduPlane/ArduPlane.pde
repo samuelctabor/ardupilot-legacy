@@ -383,7 +383,6 @@ static struct {
 };
 
 
-
 ////////////////////////////////////////////////////////////////////////////////
 // Failsafe
 ////////////////////////////////////////////////////////////////////////////////
@@ -1189,6 +1188,7 @@ static void update_flight_mode(void)
         // hold_course is only used in takeoff and landing
         steer_state.hold_course_cd = -1;
     }
+
     switch (effective_mode) 
     {
     case AUTO:
