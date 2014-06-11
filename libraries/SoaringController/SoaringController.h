@@ -63,6 +63,7 @@ class SoaringController
  float _last_total_E;
  bool _new_data;
  float _loiter_rad; // Loiter radius passed in
+ bool _throttle_suppressed;
  uint8_t _msgid;
  DataFlash_Class* _dataflash;
  float correct_netto_rate(float climb_rate, float phi, float aspd);
@@ -79,6 +80,8 @@ class SoaringController
   AP_Float polar_CD0;
   AP_Float polar_B;
   AP_Float polar_K;
+  AP_Float alt_max;
+  AP_Float alt_min;
   
   public:
   SoaringController(AP_AHRS &ahrs, AP_SpdHgtControl *&spdHgt, const AP_Vehicle::FixedWing &parms, DataFlash_Class* dataflash, uint8_t msgid) :
@@ -104,6 +107,7 @@ class SoaringController
   void init_cruising();
   void update_thermalling(float loiter_radius);
   void update_cruising();
+  bool is_active();
   // Soaring log structure
 struct PACKED log_Thermal_Tuning {
 	LOG_PACKET_HEADER;		

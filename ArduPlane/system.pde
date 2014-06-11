@@ -325,6 +325,9 @@ static void set_mode(enum FlightMode mode)
     case FLY_BY_WIRE_B:
         auto_throttle_mode = true;
         target_altitude_cm = current_loc.alt;
+        if (soaring_controller.is_active()) {
+            soaring_controller.init_cruising();
+        }
         break;
 
     case CIRCLE:
@@ -338,6 +341,9 @@ static void set_mode(enum FlightMode mode)
         next_WP_loc = prev_WP_loc = current_loc;
         // start or resume the mission, based on MIS_AUTORESET
         mission.start_or_resume();
+        if (soaring_controller.is_active()) {
+            soaring_controller.init_cruising();
+        }
         break;
 
     case RTL:
@@ -349,6 +355,10 @@ static void set_mode(enum FlightMode mode)
     case LOITER:
         auto_throttle_mode = true;
         do_loiter_at_location();
+        if (soaring_controller.is_active()) {
+            soaring_controller.init_thermalling();
+            soaring_controller.get_target(next_WP_loc); // ahead on flight path
+        }
         break;
 
     case GUIDED:

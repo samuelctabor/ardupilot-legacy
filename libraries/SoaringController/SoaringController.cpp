@@ -61,7 +61,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: seconds
     // @Range: 0 32768
     // @User: Advanced 
-    AP_GROUPINFO("MIN_THERMAL_S", 6, SoaringController, min_thermal_s, 20),
+    AP_GROUPINFO("MIN_THML_S", 6, SoaringController, min_thermal_s, 60),
     
     // @Param: MIN_CRUISE_S
     // @DisplayName: Minimum cruising time
@@ -69,7 +69,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: seconds
     // @Range: 0 32768
     // @User: Advanced 
-    AP_GROUPINFO("MIN_CRUISE_S", 7, SoaringController, min_cruise_s, 60),
+    AP_GROUPINFO("MIN_CRSE_S", 7, SoaringController, min_cruise_s, 60),
     
     // @Param: POLAR_CD0
     // @DisplayName: Zero lift drag coef.
@@ -95,6 +95,22 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @User: Advanced 
     AP_GROUPINFO("POLAR_K", 10, SoaringController, polar_K, 23.6),
     
+        // @Param: ALT_MAX
+    // @DisplayName: Maximum soaring altitude
+    // @Description: Don't thermal any higher than this.
+    // @Units: m
+    // @Range: 0 1000.0
+    // @User: Advanced 
+    AP_GROUPINFO("ALT_MAX", 11, SoaringController, alt_max, 300.0),
+    
+            // @Param: ALT_MIN
+    // @DisplayName: Minimum soaring altitude
+    // @Description: Don't get any lower than this.
+    // @Units: m
+    // @Range: 0 1000.0
+    // @User: Advanced 
+    AP_GROUPINFO("ALT_MIN", 12, SoaringController, alt_min, 50.0),
+    
     AP_GROUPEND
 };
     
@@ -105,18 +121,24 @@ void SoaringController::get_target(Location &wp)
 }
 bool SoaringController::suppress_throttle()
 {
+    _throttle_suppressed = _throttle_suppressed ? _alt<alt_min : _alt>alt_max;
+    //return _throttle_suppressed;
     return false;
 }
 
 bool SoaringController::check_thermal_criteria()
 {
-    return(soar_active && (( hal.scheduler->millis() - _cruise_start_time_ms ) > ((unsigned)min_cruise_s*1000)) && _vario_reading > thermal_vspeed);
+    return(soar_active && (( hal.scheduler->millis() - _cruise_start_time_ms ) > ((unsigned)min_cruise_s*1000)) && _vario_reading > thermal_vspeed && _alt < alt_max && _alt>alt_min);
 }
 bool SoaringController::check_cruise_criteria()
 {
     float thermalability = (ekf.X[0]*exp(-pow(_loiter_rad/ekf.X[1],2)))-EXPECTED_THERMALLING_SINK; 
     if (soar_active && (hal.scheduler->millis()-_thermal_start_time_ms) > ((unsigned)min_thermal_s*1000) && thermalability < McCready(_alt)) {
         hal.console->printf_P(PSTR("Thermal weak, recommend quitting: W %f R %f th %f alt %f Mc %f\n"),ekf.X[0],ekf.X[1],thermalability,_alt,McCready(_alt));
+        return true;
+    }
+    else if (soar_active && (_alt>alt_max || _alt<alt_min)) {
+        hal.console->printf_P(PSTR("Out of allowable altitude range, beginning cruise. Alt = %f\n"),_alt);
         return true;
     }
     return false;
@@ -249,6 +271,7 @@ float SoaringController::correct_netto_rate(float climb_rate, float phi, float a
 }
  
 float SoaringController::McCready(float alt) {
+    return thermal_vspeed; 
     float XP[] = {500, 3000};
     float YP[] = {0, 4};
     int n = 2;
@@ -277,6 +300,12 @@ void SoaringController::log_data()
     log_tuning.msgid = _msgid;
     _dataflash->WriteBlock(&log_tuning, sizeof(log_tuning));
 }
+bool SoaringController::is_active()
+{
+    return soar_active;
+}
+    
+    
 
     
     

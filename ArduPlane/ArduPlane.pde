@@ -1436,11 +1436,11 @@ static void update_alt()
  *
  *  Peter Braswell and Samuel Tabor 
 */
-// Keep track of the previous flight mode so we can transition back
-// When we come out of thermal mode.
-static FlightMode previous_control_mode;
 
 static void update_soaring() {
+     if (!soaring_controller.is_active()) {
+         return;
+     }
     soaring_controller.update_vario();
     switch (control_mode)
     {
@@ -1451,10 +1451,7 @@ static void update_soaring() {
 
         if (soaring_controller.check_thermal_criteria()) {
         hal.console->printf_P(PSTR("Thermal detected, entering loiter\n"));
-        soaring_controller.init_thermalling();
-        previous_control_mode = control_mode;
         set_mode(LOITER);
-        soaring_controller.get_target(next_WP_loc); // ahead on flight path
         }
         break;
     case LOITER:
@@ -1463,8 +1460,7 @@ static void update_soaring() {
 
         if (soaring_controller.check_cruise_criteria()) {
         // Exit as soon as thermal state estimate deteriorates
-        soaring_controller.init_cruising();
-        set_mode(previous_control_mode);
+        set_mode(previous_mode);
         }
         else {
         // still in thermal - need to update the wp location
