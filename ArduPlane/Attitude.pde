@@ -859,6 +859,13 @@ static void set_servos(void)
             // normal throttle calculation based on servo_out
             channel_throttle->calc_pwm();
         }
+        if ((control_mode == FLY_BY_WIRE_B || 
+        control_mode == AUTO ||
+        control_mode == LOITER) &&
+        soaring_controller.suppress_throttle()) {
+            channel_throttle->servo_out = 0;
+            channel_throttle->calc_pwm();
+        }
 #endif
     }
 
