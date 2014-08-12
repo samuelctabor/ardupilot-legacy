@@ -862,6 +862,7 @@ static void set_servos(void)
         if ((control_mode == FLY_BY_WIRE_B || 
         control_mode == AUTO ||
         control_mode == LOITER) &&
+        soaring_controller.is_active() &&
         soaring_controller.suppress_throttle()) {
             channel_throttle->servo_out = 0;
             channel_throttle->calc_pwm();
