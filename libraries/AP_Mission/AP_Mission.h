@@ -43,6 +43,20 @@ class AP_Mission {
 
 public:
 
+    // nav guided command
+    struct PACKED Nav_Guided_Command {
+        float alt_min;          // min alt below which the command will be aborted.  0 for no lower alt limit
+        float alt_max;          // max alt above which the command will be aborted.  0 for no upper alt limit
+        float horiz_max;        // max horizontal distance the vehicle can move before the command will be aborted.  0 for no horizontal limit
+    };
+
+    // nav velocity command
+    struct PACKED Nav_Velocity_Command {
+        float x;                // lat (i.e. north) velocity in m/s
+        float y;                // lon (i.e. east) velocity in m/s
+        float z;                // vertical velocity in m/s
+    };
+
     // jump command structure
     struct PACKED Jump_Command {
         uint16_t target;        // target command id
@@ -107,6 +121,12 @@ public:
     };
 
     union PACKED Content {
+        // Nav_Guided_Command
+        Nav_Guided_Command nav_guided;
+
+        // Nav_Velocity_Command
+        Nav_Velocity_Command nav_velocity;
+
         // jump structure
         Jump_Command jump;
 
@@ -169,7 +189,8 @@ public:
         _cmd_start_fn(cmd_start_fn),
         _cmd_verify_fn(cmd_verify_fn),
         _mission_complete_fn(mission_complete_fn),
-        _prev_nav_cmd_index(AP_MISSION_CMD_INDEX_NONE)
+        _prev_nav_cmd_index(AP_MISSION_CMD_INDEX_NONE),
+        _last_change_time_ms(0)
     {
         // load parameter defaults
         AP_Param::setup_object_defaults(this, var_info);
@@ -300,6 +321,9 @@ public:
     //  return true on success, false on failure
     static bool mission_cmd_to_mavlink(const AP_Mission::Mission_Command& cmd, mavlink_mission_item_t& packet);
 
+    // return the last time the mission changed in milliseconds
+    uint32_t last_change_time_ms(void) const { return _last_change_time_ms; }
+
     // user settable parameters
     static const struct AP_Param::GroupInfo var_info[];
 
@@ -383,6 +407,9 @@ private:
         uint16_t index;                 // index of do-jump commands in mission
         int16_t num_times_run;          // number of times this jump command has been run
     } _jump_tracking[AP_MISSION_MAX_NUM_DO_JUMP_COMMANDS];
+
+    // last time that mission changed
+    uint32_t _last_change_time_ms;
 };
 
 #endif

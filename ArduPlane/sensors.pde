@@ -10,20 +10,13 @@ static void init_barometer(void)
 
 static void init_sonar(void)
 {
-#if CONFIG_HAL_BOARD == HAL_BOARD_APM1
-    sonar.Init(&apm1_adc);
-#else
-    sonar.Init(NULL);
-#endif
+    sonar.init();
 }
 
 // read the sonars
 static void read_sonars(void)
 {
-    if (!sonar.enabled()) {
-        // this makes it possible to disable sonar at runtime
-        return;
-    }
+    sonar.update();
 
     if (should_log(MASK_LOG_SONAR))
         Log_Write_Sonar();
@@ -78,30 +71,3 @@ void read_receiver_rssi(void)
         receiver_rssi = constrain_int16(ret, 0, 255);
     }
 }
-
-/*
-  return current_loc.alt adjusted for ALT_OFFSET
-  This is useful during long flights to account for barometer changes
-  from the GCS, or to adjust the flying height of a long mission
- */
-static int32_t adjusted_altitude_cm(void)
-{
-    return current_loc.alt - (g.alt_offset*100);
-}
-
-
-/* 
-  Convienience method primarily to support 
-  the soaring module
-*/
-static float read_climb_rate() {
-  
-#if HIL_MODE != HIL_MODE_ATTITUDE
-  // in HIL, this is done when new data is received, to avoid putting too many identical baro readings into climb rate filter
-  barometer.read();
-  barometer.get_altitude();
-#endif
-  
-  return barometer.get_climb_rate();
-}
-

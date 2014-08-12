@@ -358,6 +358,7 @@ private:
     bool hgtTimeout;                // boolean true if height measurements have failed innovation consistency check and timed out
     bool magTimeout;                // boolean true if magnetometer measurements have failed for too long and have timed out
     bool filterDiverged;            // boolean true if the filter has diverged
+    bool magFailed;                 // boolean true if the magnetometer has failed
 
     Vector31 Kfusion;               // Kalman gain vector
     Matrix22 KH;                    // intermediate result used for covariance updates
@@ -516,7 +517,7 @@ private:
     bool assume_zero_sideslip(void) const;
 };
 
-#if CONFIG_HAL_BOARD != HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD != HAL_BOARD_PX4 && CONFIG_HAL_BOARD != HAL_BOARD_VRBRAIN
 #define perf_begin(x)
 #define perf_end(x)
 #endif

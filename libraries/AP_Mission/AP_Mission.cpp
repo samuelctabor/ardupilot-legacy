@@ -4,6 +4,7 @@
 /// @brief   Handles the MAVLINK command mission stack.  Reads and writes mission to storage.
 
 #include "AP_Mission.h"
+#include <AP_Terrain.h>
 
 const AP_Param::GroupInfo AP_Mission::var_info[] PROGMEM = {
 
@@ -41,6 +42,8 @@ void AP_Mission::init()
     if (sizeof(union Content) != 12) {
         hal.scheduler->panic(PSTR("AP_Mission Content must be 12 bytes"));
     }
+
+    _last_change_time_ms = hal.scheduler->millis();
 }
 
 /// start - resets current commands to point to the beginning of the mission
@@ -422,6 +425,9 @@ bool AP_Mission::write_cmd_to_storage(uint16_t index, Mission_Command& cmd)
     hal.storage->write_word(pos_in_storage+1, cmd.p1);
     hal.storage->write_block(pos_in_storage+3, cmd.content.bytes, 12);
 
+    // remember when the mission last changed
+    _last_change_time_ms = hal.scheduler->millis();
+
     // return success
     return true;
 }
@@ -442,6 +448,7 @@ bool AP_Mission::mavlink_to_mission_cmd(const mavlink_mission_item_t& packet, AP
 {
     bool copy_location = false;
     bool copy_alt = false;
+    uint8_t num_turns, radius_m;    // used by MAV_CMD_NAV_LOITER_TURNS
 
     // command's position in mission list and mavlink id
     cmd.index = packet.seq;
@@ -462,7 +469,9 @@ bool AP_Mission::mavlink_to_mission_cmd(const mavlink_mission_item_t& packet, AP
 
     case MAV_CMD_NAV_LOITER_TURNS:                      // MAV ID: 18
         copy_location = true;
-        cmd.p1 = packet.param1;                         // number of times to circle is held in location.p1
+        num_turns = packet.param1;                      // number of times to circle is held in param1
+        radius_m = fabs(packet.param3);                 // radius in meters is held in high in param3
+        cmd.p1 = (((uint16_t)radius_m)<<8) | (uint16_t)num_turns;   // store radius in high byte of p1, num turns in low byte of p1
         cmd.content.location.flags.loiter_ccw = (packet.param3 < 0);
         break;
 
@@ -489,6 +498,24 @@ bool AP_Mission::mavlink_to_mission_cmd(const mavlink_mission_item_t& packet, AP
         copy_location = true;
         cmd.p1 = packet.param1;                         // delay at waypoint in seconds
         break;
+
+#ifdef MAV_CMD_NAV_GUIDED
+    case MAV_CMD_NAV_GUIDED:                     // MAV ID: 90
+        cmd.p1 = packet.param1;                         // max time in seconds the external controller will be allowed to control the vehicle
+        cmd.content.nav_guided.alt_min = packet.param2; // min alt below which the command will be aborted.  0 for no lower alt limit
+        cmd.content.nav_guided.alt_max = packet.param3; // max alt above which the command will be aborted.  0 for no upper alt limit
+        cmd.content.nav_guided.horiz_max = packet.param4;   // max horizontal distance the vehicle can move before the command will be aborted.  0 for no horizontal limit
+        break;
+#endif
+
+#ifdef MAV_CMD_NAV_VELOCITY
+    case MAV_CMD_NAV_VELOCITY:                          // MAV ID: 91
+        cmd.p1 = packet.param1;                         // frame - unused
+        cmd.content.nav_velocity.x = packet.x;          // lat (i.e. north) velocity in m/s
+        cmd.content.nav_velocity.y = packet.y;          // lon (i.e. east) velocity in m/s
+        cmd.content.nav_velocity.z = packet.z;          // vertical (i.e. up) velocity in m/s
+        break;
+#endif
 
     case MAV_CMD_CONDITION_DELAY:                       // MAV ID: 112
         cmd.content.delay.seconds = packet.param1;      // delay in seconds
@@ -576,10 +603,13 @@ bool AP_Mission::mavlink_to_mission_cmd(const mavlink_mission_item_t& packet, AP
         cmd.p1 = packet.param1;                        // action 0=disable, 1=enable, 2=release.  See PARACHUTE_ACTION enum
         break;
 
+    case MAV_CMD_DO_INVERTED_FLIGHT:                    // MAV ID: 210
+        cmd.p1 = packet.param1;                         // normal=0 inverted=1
+        break;
+
     default:
         // unrecognised command
         return false;
-        break;
     }
 
     // copy location from mavlink to command
@@ -629,9 +659,23 @@ bool AP_Mission::mavlink_to_mission_cmd(const mavlink_mission_item_t& packet, AP
             break;
 #endif
 
+#if AP_TERRAIN_AVAILABLE
+        case MAV_FRAME_GLOBAL_TERRAIN_ALT:
+            if (copy_location) {
+                cmd.content.location.lat = 1.0e7f * packet.x;   // floating point latitude to int32_t
+                cmd.content.location.lng = 1.0e7f * packet.y;   // floating point longitude to int32_t
+            }
+            cmd.content.location.alt = packet.z * 100.0f;       // convert packet's alt (m) to cmd alt (cm)
+            // we mark it as a relative altitude, as it doesn't have
+            // home alt added
+            cmd.content.location.flags.relative_alt = 1;
+            // mark altitude as above terrain, not above home
+            cmd.content.location.flags.terrain_alt = 1;
+            break;
+#endif
+
         default:
             return false;
-            break;
         }
     }
 
@@ -677,11 +721,10 @@ bool AP_Mission::mission_cmd_to_mavlink(const AP_Mission::Mission_Command& cmd, 
 
     case MAV_CMD_NAV_LOITER_TURNS:                      // MAV ID: 18
         copy_location = true;
-        packet.param1 = cmd.p1;                         // number of times to circle is held in location.p1
+        packet.param1 = LOWBYTE(cmd.p1);                // number of times to circle is held in low byte of p1
+        packet.param3 = HIGHBYTE(cmd.p1);               // radius is held in high byte of p1
         if (cmd.content.location.flags.loiter_ccw) {
-            packet.param3 = -1;
-        }else{
-            packet.param3 = 1;
+            packet.param3 = -packet.param3;
         }
         break;
 
@@ -713,13 +756,31 @@ bool AP_Mission::mission_cmd_to_mavlink(const AP_Mission::Mission_Command& cmd, 
         packet.param1 = cmd.p1;                         // delay at waypoint in seconds
         break;
 
+#ifdef MAV_CMD_NAV_GUIDED
+    case MAV_CMD_NAV_GUIDED:                     // MAV ID: 90
+        packet.param1 = cmd.p1;                         // max time in seconds the external controller will be allowed to control the vehicle
+        packet.param2 = cmd.content.nav_guided.alt_min; // min alt below which the command will be aborted.  0 for no lower alt limit
+        packet.param3 = cmd.content.nav_guided.alt_max; // max alt above which the command will be aborted.  0 for no upper alt limit
+        packet.param4 = cmd.content.nav_guided.horiz_max;   // max horizontal distance the vehicle can move before the command will be aborted.  0 for no horizontal limit
+        break;
+#endif
+
+#ifdef MAV_CMD_NAV_VELOCITY
+    case MAV_CMD_NAV_VELOCITY:                          // MAV ID: 91
+        packet.param1 = cmd.p1;                         // frame - unused
+        packet.x = cmd.content.nav_velocity.x;          // lat (i.e. north) velocity in m/s
+        packet.y = cmd.content.nav_velocity.y;          // lon (i.e. east) velocity in m/s
+        packet.z = cmd.content.nav_velocity.z;          // vertical (i.e. up) velocity in m/s
+        break;
+#endif
+
     case MAV_CMD_CONDITION_DELAY:                       // MAV ID: 112
         packet.param1 = cmd.content.delay.seconds;      // delay in seconds
         break;
 
     case MAV_CMD_CONDITION_CHANGE_ALT:                  // MAV ID: 113
         copy_alt = true;                                // only altitude is used
-        packet.param1 = cmd.content.location.lat / 100.0f;  // climb/descent rate converted from cm/s to m/s.  To-Do: store in proper climb_rate structure
+        packet.param1 = cmd.content.location.alt / 100.0f;  // climb/descent rate converted from cm/s to m/s.  To-Do: store in proper climb_rate structure
         break;
 
     case MAV_CMD_CONDITION_DISTANCE:                    // MAV ID: 114
@@ -799,10 +860,13 @@ bool AP_Mission::mission_cmd_to_mavlink(const AP_Mission::Mission_Command& cmd, 
         packet.param1 = cmd.p1;                         // action 0=disable, 1=enable, 2=release.  See PARACHUTE_ACTION enum
         break;
 
+    case MAV_CMD_DO_INVERTED_FLIGHT:                    // MAV ID: 210
+        packet.param1 = cmd.p1;                         // normal=0 inverted=1
+        break;
+
     default:
         // unrecognised command
         return false;
-        break;
     }
 
     // copy location from mavlink to command
@@ -817,6 +881,27 @@ bool AP_Mission::mission_cmd_to_mavlink(const AP_Mission::Mission_Command& cmd, 
         }else{
             packet.frame = MAV_FRAME_GLOBAL;
         }
+#if AP_TERRAIN_AVAILABLE
+        if (cmd.content.location.flags.terrain_alt) {
+            // this is a above-terrain altitude
+            if (!cmd.content.location.flags.relative_alt) {
+                // refuse to return non-relative terrain mission
+                // items. Internally we do have these, and they
+                // have home.alt added, but we should never be
+                // returning them to the GCS, as the GCS doesn't know
+                // our home.alt, so it would have no way to properly
+                // interpret it
+                return false;
+            }
+            packet.z = cmd.content.location.alt * 0.01f;
+            packet.frame = MAV_FRAME_GLOBAL_TERRAIN_ALT;
+        }
+#else
+        // don't ever return terrain mission items if no terrain support
+        if (cmd.content.location.flags.terrain_alt) {
+            return false;
+        }
+#endif
     }
 
     // if we got this far then it must have been successful

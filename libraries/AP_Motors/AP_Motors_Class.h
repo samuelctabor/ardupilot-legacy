@@ -102,6 +102,9 @@ public:
     void                set_yaw(int16_t yaw_in) { _rc_yaw.servo_out = yaw_in; };                        // range -4500 ~ 4500
     void                set_throttle(int16_t throttle_in) { _rc_throttle.servo_out = throttle_in; };    // range 0 ~ 1000
 
+    // get_throttle_out - returns throttle sent to motors in the range 0 ~ 1000
+    int16_t             get_throttle_out() const { return _rc_throttle.servo_out; }
+
     // output - sends commands to the motors
     void                output();
 
@@ -126,6 +129,10 @@ public:
     // slow_start - set to true to slew motors from current speed to maximum
     // Note: this must be set immediately before a step up in throttle
     void                slow_start(bool true_false);
+
+    // get_motor_mask - returns a bitmask of which outputs are being used for motors (1 means being used)
+    //  this can be used to ensure other pwm outputs (i.e. for servos) do not conflict
+    virtual uint16_t    get_motor_mask() = 0;
 
     // structure for holding motor limit flags
     struct AP_Motors_limit {

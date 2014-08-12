@@ -511,13 +511,16 @@ void NavEKF::InitialiseFilterBootstrap(void)
     readMagData();
 
     // normalise the acceleration vector
-    initAccVec.normalize();
+    float pitch=0, roll=0;
+    if (initAccVec.length() > 0.001f) {
+        initAccVec.normalize();
 
-    // calculate initial pitch angle
-    float pitch = asinf(initAccVec.x);
+        // calculate initial pitch angle
+        pitch = asinf(initAccVec.x);
 
-    // calculate initial roll angle
-    float roll = -asinf(initAccVec.y / cosf(pitch));
+        // calculate initial roll angle
+        roll = -asinf(initAccVec.y / cosf(pitch));
+    }
 
     // calculate initial orientation and earth magnetic field states
     Quaternion initQuat;
@@ -733,35 +736,40 @@ void NavEKF::SelectVelPosFusion()
 // select fusion of magnetometer data
 void NavEKF::SelectMagFusion()
 {
-    // check for and read new magnetometer measurements
-    readMagData();
+    if(!magFailed) {
+        // check for and read new magnetometer measurements
+        readMagData();
 
-    // If we are using the compass and the magnetometer has been unhealthy for too long we declare it failed
-    if (magHealth) {
-        lastHealthyMagTime_ms = hal.scheduler->millis();
-    } else {
-        if ((hal.scheduler->millis() - lastHealthyMagTime_ms) > _magFailTimeLimit_ms && use_compass()) {
-            magTimeout = true;
+        // If we are using the compass and the magnetometer has been unhealthy for too long we declare a timeout
+        // If we have a vehicle that can fly without a compass (a vehicle that doesn't have significant sideslip) then the compass is permanently failed and will not be used until the filter is reset
+        if (magHealth) {
+            lastHealthyMagTime_ms = hal.scheduler->millis();
         } else {
-            magTimeout = false;
+            if ((hal.scheduler->millis() - lastHealthyMagTime_ms) > _magFailTimeLimit_ms && use_compass()) {
+                magTimeout = true;
+                if (assume_zero_sideslip()) {
+                    magFailed = true;
+                }
+            } else {
+                magTimeout = false;
+            }
         }
-    }
 
-    // determine if conditions are right to start a new fusion cycle
-    bool dataReady = statesInitialised && use_compass() && newDataMag;
-    if (dataReady)
-    {
-        MAGmsecPrev = IMUmsec;
-        fuseMagData = true;
-    }
-    else
-    {
-        fuseMagData = false;
-    }
+        // determine if conditions are right to start a new fusion cycle
+        bool dataReady = statesInitialised && use_compass() && newDataMag;
+        if (dataReady)
+        {
+            MAGmsecPrev = IMUmsec;
+            fuseMagData = true;
+        }
+        else
+        {
+            fuseMagData = false;
+        }
 
-    // call the function that performs fusion of magnetometer data
-    FuseMagnetometer();
-
+        // call the function that performs fusion of magnetometer data
+        FuseMagnetometer();
+    }
 }
 
 // select fusion of true airspeed measurements
@@ -2807,6 +2815,8 @@ bool NavEKF::getLLH(struct Location &loc) const
     loc.lat = _ahrs->get_home().lat;
     loc.lng = _ahrs->get_home().lng;
     loc.alt = _ahrs->get_home().alt - states[9]*100;
+    loc.flags.relative_alt = 0;
+    loc.flags.terrain_alt = 0;
     location_offset(loc, states[7], states[8]);
     return true;
 }
@@ -3302,6 +3312,9 @@ void NavEKF::ZeroVariables()
     posTimeout = false;
     hgtTimeout = false;
     filterDiverged = false;
+    magTimeout = false;
+    magFailed = false;
+    lastHealthyMagTime_ms = hal.scheduler->millis();
     lastStateStoreTime_ms = 0;
     lastFixTime_ms = 0;
     secondLastFixTime_ms = 0;
@@ -3361,7 +3374,7 @@ bool NavEKF::static_mode_demanded(void) const
 // return true if we should use the compass
 bool NavEKF::use_compass(void) const
 {
-    return _ahrs->get_compass() && _ahrs->get_compass()->use_for_yaw();
+    return _ahrs->get_compass() && _ahrs->get_compass()->use_for_yaw() && !magFailed;
 }
 
 // decay GPS horizontal position offset to close to zero at a rate of 1 m/s
@@ -3402,7 +3415,7 @@ void NavEKF::checkDivergence()
     float tempLength = tempVec.length();
     if (tempLength != 0.0f) {
         float temp = constrain_float((P[10][10] + P[11][11] + P[12][12]),1e-12f,1e-8f);
-        scaledDeltaGyrBiasLgth = (1e-6f / temp) * tempVec.length() / dtIMU;
+        scaledDeltaGyrBiasLgth = (5e-7f / temp) * tempVec.length() / dtIMU;
     }
     bool divergenceDetected = (scaledDeltaGyrBiasLgth > 1.0f);
     lastGyroBias = state.gyro_bias;

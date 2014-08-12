@@ -125,7 +125,8 @@ void AP_Baro::calibrate()
 */
 void AP_Baro::update_calibration()
 {
-    _ground_pressure.set(get_pressure());
+    float pressure = get_pressure();
+    _ground_pressure.set(pressure);
     _ground_temperature.set(get_temperature());
 }
 
@@ -166,7 +167,8 @@ float AP_Baro::get_altitude(void)
         return _altitude + _alt_offset;
     }
 
-    _altitude = get_altitude_difference(_ground_pressure, get_pressure());
+    float pressure = get_pressure();
+    _altitude = get_altitude_difference(_ground_pressure, pressure);
 
 	// NEW
 	//hal.console->printf_P(PSTR("%f %f %i\n"),_last_altitude,_altitude,(_last_altitude == _altitude));	
@@ -189,7 +191,7 @@ float AP_Baro::get_altitude(void)
 // assumes standard atmosphere lapse rate
 float AP_Baro::get_EAS2TAS(void)
 {
-    if ((fabs(_altitude - _last_altitude_EAS2TAS) < 100.0f) && (_EAS2TAS != 0.0f)) {
+    if ((fabsf(_altitude - _last_altitude_EAS2TAS) < 100.0f) && (_EAS2TAS != 0.0f)) {
         // not enough change to require re-calculating
         return _EAS2TAS;
     }
