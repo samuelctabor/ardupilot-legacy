@@ -1442,6 +1442,12 @@ static void update_soaring() {
          return;
      }
     soaring_controller.update_vario();
+    
+    // Nothing to do if we are in powered flight
+    if (!soaring_controller.suppress_throttle()) {
+        return;
+    }
+    
     switch (control_mode)
     {
     case AUTO:

@@ -121,9 +121,8 @@ void SoaringController::get_target(Location &wp)
 }
 bool SoaringController::suppress_throttle()
 {
-    _throttle_suppressed = _throttle_suppressed ? _alt<alt_min : _alt>alt_max;
-    //return _throttle_suppressed;
-    return false;
+    _throttle_suppressed = _throttle_suppressed ? _alt>alt_min : _alt>alt_max;
+    return _throttle_suppressed;
 }
 
 bool SoaringController::check_thermal_criteria()
@@ -175,12 +174,11 @@ void SoaringController::update_thermalling(float loiter_radius)
         float dx = get_offset_north(_prev_update_location, current_loc);  // get distances from previous update
         float dy = get_offset_east(_prev_update_location, current_loc);
 
-        if (0) {
-            // Wind correction currently unused
-            //Vector3f wind = _ahrs.wind_estimate();
-            //dx += wind.x * (millis()-_prev_update_time)/1000.0;
-            //dy += wind.y * (millis()-_prev_update_time)/1000.0;
-        }
+        // Wind correction
+        Vector3f wind = _ahrs.wind_estimate();
+        dx -= wind.x * (hal.scheduler->millis()-_prev_update_time)/1000.0;
+        dy -= wind.y * (hal.scheduler->millis()-_prev_update_time)/1000.0;
+
 
         if (0) {
             // Print filter info for debugging
@@ -227,7 +225,7 @@ void SoaringController::update_vario()
 {   
     Location current_loc;
     _ahrs.get_position(current_loc);
-    _alt = current_loc.alt/100.0f;
+    _alt = (current_loc.alt-_ahrs.get_home().alt)/100.0f;
     if (!(_alt==_last_alt)) {
     // Both filtered total energy rates and unfiltered are computed for the thermal switching logic and the EKF
         float aspd;
@@ -235,10 +233,11 @@ void SoaringController::update_vario()
         if (!_ahrs.airspeed_estimate(&aspd)) {
             aspd = 0.5f*(aparm.airspeed_min+aparm.airspeed_max); //
         }
-        float total_E = _alt+0.5*aspd*aspd/GRAVITY_MSS;                                                                 // Work out total energy                                                 // Feed into the derivative filter
-        float sinkrate = correct_netto_rate(0.0f, (roll+_last_roll)/2, (aspd+_last_aspd)/2);                            // Compute still-air sinkrate
+        _aspd_filt = ASPD_FILT * aspd + (1-ASPD_FILT)*_aspd_filt;
+        float total_E = _alt+0.5*_aspd_filt*_aspd_filt/GRAVITY_MSS;                                                     // Work out total energy
+        float sinkrate = correct_netto_rate(0.0f, (roll+_last_roll)/2, _aspd_filt);                                     // Compute still-air sinkrate
         _vario_reading = (total_E - _last_total_E)*1000.0/(hal.scheduler->millis()-_prev_vario_update_time) + sinkrate; // Unfiltered netto rate
-        _filtered_vario_reading = 0.9048*_filtered_vario_reading + 0.0952*_vario_reading;                               // Apply low pass 2sec timeconst filter for noise
+        _filtered_vario_reading = TE_FILT*_vario_reading+(1-TE_FILT)*_filtered_vario_reading;                           // Apply low pass timeconst filter for noise
         _last_alt = _alt;                                       // Store variables
         _last_roll=roll;
         _last_aspd = aspd;

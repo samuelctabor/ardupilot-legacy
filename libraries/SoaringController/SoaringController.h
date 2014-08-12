@@ -18,6 +18,8 @@ Provides a layer between the thermal centring algorithm and the main code for ma
 #define INITIAL_STRENGTH_COVARIANCE 2.0
 #define INITIAL_RADIUS_COVARIANCE 2500.0
 #define INITIAL_POSITION_COVARIANCE 300.0
+#define ASPD_FILT 0.01
+#define TE_FILT 0.02
 class SoaringController
 {
    
@@ -64,6 +66,7 @@ class SoaringController
  bool _new_data;
  float _loiter_rad; // Loiter radius passed in
  bool _throttle_suppressed;
+ float _aspd_filt;
  uint8_t _msgid;
  DataFlash_Class* _dataflash;
  float correct_netto_rate(float climb_rate, float phi, float aspd);
