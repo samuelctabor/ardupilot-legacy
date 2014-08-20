@@ -11,11 +11,12 @@
 // The following are the recommended settings for Xplane
 // simulation. Remove the leading "/* and trailing "*/" to enable:
 
-#define HIL_MODE            HIL_MODE_SENSORS
+//#define HIL_MODE            HIL_MODE_SENSORS
 
 # define MOUNT2 DISABLED
 # define MOUNT DISABLED
 # define CAMERA DISABLED
+# define CLI_ENABLED DISABLED
 /*
  *  // HIL_MODE SELECTION
  *  //
