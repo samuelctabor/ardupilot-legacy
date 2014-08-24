@@ -18,8 +18,8 @@ Provides a layer between the thermal centring algorithm and the main code for ma
 #define INITIAL_STRENGTH_COVARIANCE 2.0
 #define INITIAL_RADIUS_COVARIANCE 2500.0
 #define INITIAL_POSITION_COVARIANCE 300.0
-#define ASPD_FILT 0.01
-#define TE_FILT 0.02
+#define ASPD_FILT 0.05
+#define TE_FILT 0.03
 class SoaringController
 {
    
@@ -68,6 +68,7 @@ class SoaringController
  bool _throttle_suppressed;
  float _aspd_filt;
  uint8_t _msgid;
+ uint8_t _msgid2;
  DataFlash_Class* _dataflash;
  float correct_netto_rate(float climb_rate, float phi, float aspd);
  float McCready(float alt);
@@ -87,12 +88,13 @@ class SoaringController
   AP_Float alt_min;
   
   public:
-  SoaringController(AP_AHRS &ahrs, AP_SpdHgtControl *&spdHgt, const AP_Vehicle::FixedWing &parms, DataFlash_Class* dataflash, uint8_t msgid) :
+  SoaringController(AP_AHRS &ahrs, AP_SpdHgtControl *&spdHgt, const AP_Vehicle::FixedWing &parms, DataFlash_Class* dataflash, uint8_t msgid, uint8_t msgid2) :
     _ahrs(ahrs),
     aparm(parms),
     _spdHgt(spdHgt),
     _dataflash(dataflash),
-    _msgid(msgid)
+    _msgid(msgid),
+    _msgid2(msgid2)
     {
         AP_Param::setup_object_defaults(this, var_info);
     }
@@ -126,6 +128,17 @@ struct PACKED log_Thermal_Tuning {
 	uint32_t lng;		
 	float alt;
 	} log_tuning;
+    
+    struct PACKED log_Vario_Tuning {
+	LOG_PACKET_HEADER;		
+	uint32_t time_ms;
+	float aspd_raw;
+    float aspd_filt;
+	float alt;
+	float roll;
+	float raw;
+	float filt;		
+	} log_vario_tuning;
 void update_vario();
 
   
@@ -133,6 +146,8 @@ void update_vario();
 };
 #define THML_LOG_FORMAT(msg) { msg, sizeof(SoaringController::log_tuning),	\
 							   "THML",  "IfffffffLLf",     "TimeMS,nettorate,dx,dy,x0,x1,x2,x3,lat,lng,alt" }
+#define VARIO_LOG_FORMAT(msg) { msg, sizeof(SoaringController::log_vario_tuning),	\
+							   "VAR",  "Iffffff",     "TimeMS,aspd_raw,aspd_filt,alt,roll,raw,filt" }
 
 
 #endif

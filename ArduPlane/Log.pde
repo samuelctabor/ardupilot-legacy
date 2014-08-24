@@ -54,6 +54,7 @@ print_log_menu(void)
         PLOG(RC);
         PLOG(SONAR);
 	PLOG(THERMAL);
+	PLOG(VARIO);
  #undef PLOG
     }
 
@@ -148,6 +149,7 @@ select_logs(uint8_t argc, const Menu::arg *argv)
         TARG(RC);
         TARG(SONAR);
 	TARG(THERMAL);
+        TARG(VARIO);
  #undef TARG
     }
 
@@ -554,7 +556,8 @@ static const struct LogStructure log_structure[] PROGMEM = {
     THML_LOG_FORMAT(LOG_THERMAL_MSG),
     { LOG_ATRP_MSG, sizeof(AP_AutoTune::log_ATRP),
       "ATRP", "IBBcfff",  "TimeMS,Type,State,Servo,Demanded,Achieved,P" },
-    TECS_LOG_FORMAT(LOG_TECS_MSG)
+    TECS_LOG_FORMAT(LOG_TECS_MSG),
+    VARIO_LOG_FORMAT(LOG_VARIO_MSG)
 };
 
 // Read the DataFlash.log memory : Packet Parser

@@ -127,7 +127,7 @@ bool SoaringController::suppress_throttle()
 
 bool SoaringController::check_thermal_criteria()
 {
-    return(soar_active && (( hal.scheduler->millis() - _cruise_start_time_ms ) > ((unsigned)min_cruise_s*1000)) && _vario_reading > thermal_vspeed && _alt < alt_max && _alt>alt_min);
+    return(soar_active && (( hal.scheduler->millis() - _cruise_start_time_ms ) > ((unsigned)min_cruise_s*1000)) && _filtered_vario_reading > thermal_vspeed && _alt < alt_max && _alt>alt_min);
 }
 bool SoaringController::check_cruise_criteria()
 {
@@ -244,6 +244,18 @@ void SoaringController::update_vario()
         _last_total_E = total_E;
         _prev_vario_update_time = hal.scheduler->millis();
         _new_data=true;
+        
+        log_vario_tuning.time_ms = hal.scheduler->millis();
+        log_vario_tuning.aspd_raw = aspd;
+        log_vario_tuning.aspd_filt = _aspd_filt;
+        log_vario_tuning.alt = _alt;
+        log_vario_tuning.roll = roll;
+        log_vario_tuning.raw = _vario_reading;
+        log_vario_tuning.filt = _filtered_vario_reading;
+        log_vario_tuning.head1 = HEAD_BYTE1;
+        log_vario_tuning.head2 = HEAD_BYTE2;
+        log_vario_tuning.msgid = _msgid2;
+        _dataflash->WriteBlock(&log_vario_tuning, sizeof(log_vario_tuning));		
     }
 }
 

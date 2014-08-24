@@ -128,7 +128,8 @@ enum log_messages {
     LOG_ARM_DISARM_MSG,
     LOG_AIRSPEED_MSG,
     LOG_COMPASS3_MSG,
-    LOG_THERMAL_MSG
+    LOG_THERMAL_MSG,
+    LOG_VARIO_MSG
 };
 
 #define MASK_LOG_ATTITUDE_FAST          (1<<0)
@@ -149,6 +150,7 @@ enum log_messages {
 #define MASK_LOG_ARM_DISARM             (1<<15)
 #define MASK_LOG_WHEN_DISARMED          (1UL<<16)
 #define MASK_LOG_THERMAL                (1UL<<17)
+#define MASK_LOG_VARIO                  (1UL<<18)
 
 // Waypoint Modes
 // ----------------
