@@ -104,6 +104,7 @@ class SoaringController
   static const struct AP_Param::GroupInfo var_info[];
   void get_target(Location & wp);
   bool suppress_throttle();
+  bool get_throttle_suppressed();
   //void log_data(DataFlash_Class &dataflash, uint8_t msgid);
   void log_data();
   bool check_thermal_criteria();

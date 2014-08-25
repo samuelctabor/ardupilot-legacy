@@ -1493,8 +1493,12 @@ static void update_soaring() {
      }
     soaring_controller.update_vario();
     
+    if (control_mode == FLY_BY_WIRE_B || control_mode == AUTO) {
+        soaring_controller.suppress_throttle();
+    }
+    
     // Nothing to do if we are in powered flight
-    if (!soaring_controller.suppress_throttle()) {
+    if (!soaring_controller.get_throttle_suppressed() && aparm.throttle_max>0) {
         return;
     }
     

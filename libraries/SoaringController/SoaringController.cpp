@@ -124,6 +124,10 @@ bool SoaringController::suppress_throttle()
     _throttle_suppressed = _throttle_suppressed ? _alt>alt_min : _alt>alt_max;
     return _throttle_suppressed;
 }
+bool SoaringController::get_throttle_suppressed()
+{
+    return _throttle_suppressed;
+}
 
 bool SoaringController::check_thermal_criteria()
 {
