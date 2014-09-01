@@ -121,7 +121,18 @@ void SoaringController::get_target(Location &wp)
 }
 bool SoaringController::suppress_throttle()
 {
-    _throttle_suppressed = _throttle_suppressed ? _alt>alt_min : _alt>alt_max;
+    if (_throttle_suppressed & _alt<alt_min) {
+        // Time to throttle up
+        _throttle_suppressed=false;
+    }
+    else if (!_throttle_suppressed & _alt>alt_max) {
+        // Start glide
+        _throttle_suppressed=true;
+        // Zero the pitch integrator - the nose is currently raised to climb, we need to go back to glide.
+        _spdHgt->reset_pitch_I();
+        _cruise_start_time_ms = hal.scheduler->millis();
+    }
+          
     return _throttle_suppressed;
 }
 bool SoaringController::get_throttle_suppressed()

@@ -71,6 +71,10 @@ public:
 
 	// return maximum climb rate
 	float get_max_climbrate(void) const { return _maxClimbRate; }
+    
+    // reset pitch integrator to zero
+	void reset_pitch_I(void) {_integ7_state=0.0f;}
+    
 
 	// this supports the TECS_* user settable parameters
     static const struct AP_Param::GroupInfo var_info[];

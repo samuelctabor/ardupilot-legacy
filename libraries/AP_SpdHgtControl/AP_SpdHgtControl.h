@@ -63,6 +63,9 @@ public:
 
 	// return maximum climb rate
 	virtual float get_max_climbrate(void) const = 0;
+    
+    // reset pitch integrator to zero
+	virtual void reset_pitch_I(void)= 0;
 
 	// add new controllers to this enum. Users can then
 	// select which controller to use by setting the
