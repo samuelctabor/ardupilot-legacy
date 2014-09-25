@@ -131,6 +131,9 @@ bool SoaringController::suppress_throttle()
         // Zero the pitch integrator - the nose is currently raised to climb, we need to go back to glide.
         _spdHgt->reset_pitch_I();
         _cruise_start_time_ms = hal.scheduler->millis();
+        // Reset the filtered vario rate - it is currently elevated due to the climb rate and would otherwise take a while to fall again,
+        // leading to false positives.
+        _filtered_vario_reading = 0;
     }
           
     return _throttle_suppressed;
@@ -191,8 +194,10 @@ void SoaringController::update_thermalling(float loiter_radius)
 
         // Wind correction
         Vector3f wind = _ahrs.wind_estimate();
-        dx -= wind.x * (hal.scheduler->millis()-_prev_update_time)/1000.0;
-        dy -= wind.y * (hal.scheduler->millis()-_prev_update_time)/1000.0;
+        float dx_w = wind.x * (hal.scheduler->millis()-_prev_update_time)/1000.0;
+        float dy_w = wind.y * (hal.scheduler->millis()-_prev_update_time)/1000.0;
+        dx -= dx_w;
+        dy -= dy_w;
 
 
         if (0) {
@@ -221,6 +226,8 @@ void SoaringController::update_thermalling(float loiter_radius)
             log_tuning.lat = current_loc.lat;
             log_tuning.lng = current_loc.lng;
             log_tuning.alt = _alt;
+            log_tuning.dx_w = dx_w;
+            log_tuning.dy_w = dy_w;
         }
         log_data(); 
         ekf.update(_vario_reading,dx, dy);                              // update the filter

@@ -128,6 +128,8 @@ struct PACKED log_Thermal_Tuning {
 	uint32_t lat;		
 	uint32_t lng;		
 	float alt;
+    float dx_w;
+    float dy_w;
 	} log_tuning;
     
     struct PACKED log_Vario_Tuning {
@@ -146,7 +148,7 @@ void update_vario();
                  
 };
 #define THML_LOG_FORMAT(msg) { msg, sizeof(SoaringController::log_tuning),	\
-							   "THML",  "IfffffffLLf",     "TimeMS,nettorate,dx,dy,x0,x1,x2,x3,lat,lng,alt" }
+							   "THML",  "IfffffffLLfff",     "TimeMS,nettorate,dx,dy,x0,x1,x2,x3,lat,lng,alt,dx_w,dy_w" }
 #define VARIO_LOG_FORMAT(msg) { msg, sizeof(SoaringController::log_vario_tuning),	\
 							   "VAR",  "Iffffff",     "TimeMS,aspd_raw,aspd_filt,alt,roll,raw,filt" }
 
