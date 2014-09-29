@@ -103,13 +103,21 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @User: Advanced 
     AP_GROUPINFO("ALT_MAX", 11, SoaringController, alt_max, 300.0),
     
-            // @Param: ALT_MIN
+    // @Param: ALT_MIN
     // @DisplayName: Minimum soaring altitude
     // @Description: Don't get any lower than this.
     // @Units: m
     // @Range: 0 1000.0
     // @User: Advanced 
     AP_GROUPINFO("ALT_MIN", 12, SoaringController, alt_min, 50.0),
+    
+    // @Param: ALT_CUTOFF
+    // @DisplayName: Maximum power altitude
+    // @Description: Cut off throttle at this alt.
+    // @Units: m
+    // @Range: 0 1000.0
+    // @User: Advanced 
+    AP_GROUPINFO("ALT_CUTOFF", 13, SoaringController, alt_cutoff, 300.0),
     
     AP_GROUPEND
 };
@@ -125,7 +133,7 @@ bool SoaringController::suppress_throttle()
         // Time to throttle up
         _throttle_suppressed=false;
     }
-    else if (!_throttle_suppressed & _alt>alt_max) {
+    else if (!_throttle_suppressed & _alt>alt_cutoff) {
         // Start glide
         _throttle_suppressed=true;
         // Zero the pitch integrator - the nose is currently raised to climb, we need to go back to glide.

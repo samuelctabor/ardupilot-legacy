@@ -12,10 +12,10 @@ Provides a layer between the thermal centring algorithm and the main code for ma
 #include "math.h"
 #include "ExtendedKalmanFilter.h"
 #include <AP_SpdHgtControl.h>
-#define EXPECTED_THERMALLING_SINK 0.9
+#define EXPECTED_THERMALLING_SINK 0.7
 #define INITIAL_THERMAL_STRENGTH 2.0
-#define INITIAL_THERMAL_RADIUS 300.0
-#define INITIAL_STRENGTH_COVARIANCE 2.0
+#define INITIAL_THERMAL_RADIUS 150.0
+#define INITIAL_STRENGTH_COVARIANCE 0.000049
 #define INITIAL_RADIUS_COVARIANCE 2500.0
 #define INITIAL_POSITION_COVARIANCE 300.0
 #define ASPD_FILT 0.05
@@ -86,6 +86,7 @@ class SoaringController
   AP_Float polar_K;
   AP_Float alt_max;
   AP_Float alt_min;
+  AP_Float alt_cutoff;
   
   public:
   SoaringController(AP_AHRS &ahrs, AP_SpdHgtControl *&spdHgt, const AP_Vehicle::FixedWing &parms, DataFlash_Class* dataflash, uint8_t msgid, uint8_t msgid2) :
