@@ -99,6 +99,11 @@ static void calc_airspeed_errors()
     if (control_mode >= AUTO && airspeed_nudge_cm > 0) {
         target_airspeed_cm += airspeed_nudge_cm;
     }
+    
+    if (control_mode==AUTO && soaring_controller.is_active()) {
+      // Allow soaring controller to set the target airspeed.
+      //target_airspeed_cm = soaring_controller.get_target_airspeed()*100;
+    }
 
     // Apply airspeed limit
     if (target_airspeed_cm > (aparm.airspeed_max * 100))
