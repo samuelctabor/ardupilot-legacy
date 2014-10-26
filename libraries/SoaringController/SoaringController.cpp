@@ -20,7 +20,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: m/s
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("VSPEED", 1, SoaringController, thermal_vspeed, 50.0f),
+    AP_GROUPINFO("VSPEED", 1, SoaringController, thermal_vspeed, 0.7f),
 
     // @Param: THERMAL_Q1
     // @DisplayName: Process noise
@@ -28,7 +28,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: 
     // @Range: 0 10
     // @User: Advanced 
-    AP_GROUPINFO("Q1", 2, SoaringController, thermal_q1, 0.03f),
+    AP_GROUPINFO("Q1", 2, SoaringController, thermal_q1, 0.001f),
         
     // @Param: THERMAL_Q2
     // @DisplayName: Process noise
@@ -53,7 +53,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: metres
     // @Range: 0 100
     // @User: Advanced 
-    AP_GROUPINFO("DIST_AHEAD", 5, SoaringController, thermal_distance_ahead, 50.0f),
+    AP_GROUPINFO("DIST_AHEAD", 5, SoaringController, thermal_distance_ahead, 5.0f),
     
     // @Param: MIN_THERMAL_S
     // @DisplayName: Minimum thermalling time
@@ -61,7 +61,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: seconds
     // @Range: 0 32768
     // @User: Advanced 
-    AP_GROUPINFO("MIN_THML_S", 6, SoaringController, min_thermal_s, 60),
+    AP_GROUPINFO("MIN_THML_S", 6, SoaringController, min_thermal_s, 20),
     
     // @Param: MIN_CRUISE_S
     // @DisplayName: Minimum cruising time
@@ -69,7 +69,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: seconds
     // @Range: 0 32768
     // @User: Advanced 
-    AP_GROUPINFO("MIN_CRSE_S", 7, SoaringController, min_cruise_s, 60),
+    AP_GROUPINFO("MIN_CRSE_S", 7, SoaringController, min_cruise_s, 30),
     
     // @Param: POLAR_CD0
     // @DisplayName: Zero lift drag coef.
@@ -77,7 +77,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: Non-dim.
     // @Range: 0 0.5
     // @User: Advanced 
-    AP_GROUPINFO("POLAR_CD0", 8, SoaringController, polar_CD0, 0.028),
+    AP_GROUPINFO("POLAR_CD0", 8, SoaringController, polar_CD0, 0.027),
     
     // @Param: POLAR_B
     // @DisplayName: Induced drag coeffient
@@ -85,7 +85,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: Non-dim.
     // @Range: 0 0.5
     // @User: Advanced 
-    AP_GROUPINFO("POLAR_B", 9, SoaringController, polar_B, 0.04),
+    AP_GROUPINFO("POLAR_B", 9, SoaringController, polar_B, 0.031),
     
     // @Param: POLAR_K
     // @DisplayName: Cl factor
@@ -93,7 +93,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: m^2 s^-2
     // @Range: 0 0.5
     // @User: Advanced 
-    AP_GROUPINFO("POLAR_K", 10, SoaringController, polar_K, 23.6),
+    AP_GROUPINFO("POLAR_K", 10, SoaringController, polar_K, 25.6),
     
         // @Param: ALT_MAX
     // @DisplayName: Maximum soaring altitude
@@ -101,7 +101,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: m
     // @Range: 0 1000.0
     // @User: Advanced 
-    AP_GROUPINFO("ALT_MAX", 11, SoaringController, alt_max, 300.0),
+    AP_GROUPINFO("ALT_MAX", 11, SoaringController, alt_max, 350.0),
     
     // @Param: ALT_MIN
     // @DisplayName: Minimum soaring altitude
@@ -117,7 +117,7 @@ const AP_Param::GroupInfo SoaringController::var_info[] PROGMEM = {
     // @Units: m
     // @Range: 0 1000.0
     // @User: Advanced 
-    AP_GROUPINFO("ALT_CUTOFF", 13, SoaringController, alt_cutoff, 300.0),
+    AP_GROUPINFO("ALT_CUTOFF", 13, SoaringController, alt_cutoff, 250.0),
     
     AP_GROUPEND
 };
