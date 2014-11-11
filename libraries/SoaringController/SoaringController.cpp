@@ -268,6 +268,7 @@ void SoaringController::update_vario()
         float sinkrate = correct_netto_rate(0.0f, (roll+_last_roll)/2, _aspd_filt);                                     // Compute still-air sinkrate
         _vario_reading = (total_E - _last_total_E)*1000.0/(hal.scheduler->millis()-_prev_vario_update_time) + sinkrate; // Unfiltered netto rate
         _filtered_vario_reading = TE_FILT*_vario_reading+(1-TE_FILT)*_filtered_vario_reading;                           // Apply low pass timeconst filter for noise
+        _displayed_vario_reading = TE_FILT_DISPLAYED*_vario_reading+(1-TE_FILT_DISPLAYED)*_displayed_vario_reading;
         _last_alt = _alt;                                       // Store variables
         _last_roll=roll;
         _last_aspd = aspd;

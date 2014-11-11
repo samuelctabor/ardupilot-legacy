@@ -20,6 +20,7 @@ Provides a layer between the thermal centring algorithm and the main code for ma
 #define INITIAL_POSITION_COVARIANCE 300.0
 #define ASPD_FILT 0.05
 #define TE_FILT 0.03
+#define TE_FILT_DISPLAYED 0.15
 class SoaringController
 {
    
@@ -99,8 +100,8 @@ class SoaringController
     {
         AP_Param::setup_object_defaults(this, var_info);
     }
-    
-    
+
+  float _displayed_vario_reading;  
   // this supports the TECS_* user settable parameters
   static const struct AP_Param::GroupInfo var_info[];
   void get_target(Location & wp);

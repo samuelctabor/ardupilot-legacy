@@ -382,7 +382,8 @@ static void NOINLINE send_vfr_hud(mavlink_channel_t chan)
         (ahrs.yaw_sensor / 100) % 360,
         throttle_percentage(),
         current_loc.alt / 100.0,
-        barometer.get_climb_rate());
+        //barometer.get_climb_rate());
+        soaring_controller._displayed_vario_reading);
 }
 
 #if HIL_MODE != HIL_MODE_DISABLED
