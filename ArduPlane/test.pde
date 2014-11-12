@@ -19,7 +19,6 @@ static int8_t   test_airspeed(uint8_t argc,     const Menu::arg *argv);
 static int8_t   test_pressure(uint8_t argc,     const Menu::arg *argv);
 static int8_t   test_mag(uint8_t argc,                  const Menu::arg *argv);
 static int8_t   test_xbee(uint8_t argc,                 const Menu::arg *argv);
-static int8_t   test_eedump(uint8_t argc,               const Menu::arg *argv);
 static int8_t   test_modeswitch(uint8_t argc,           const Menu::arg *argv);
 static int8_t   test_logging(uint8_t argc,              const Menu::arg *argv);
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
@@ -41,7 +40,6 @@ static const struct Menu::command test_menu_commands[] PROGMEM = {
     {"relay",                       test_relay},
     {"waypoints",           test_wp},
     {"xbee",                        test_xbee},
-    {"eedump",                      test_eedump},
     {"modeswitch",          test_modeswitch},
 
     // Tests below here are for hardware sensors only present
@@ -84,28 +82,13 @@ static void print_hit_enter()
 }
 
 static int8_t
-test_eedump(uint8_t argc, const Menu::arg *argv)
-{
-    uint16_t i, j;
-
-    // hexdump the EEPROM
-    for (i = 0; i < HAL_STORAGE_SIZE_AVAILABLE; i += 16) {
-        cliSerial->printf_P(PSTR("%04x:"), i);
-        for (j = 0; j < 16; j++)
-            cliSerial->printf_P(PSTR(" %02x"), hal.storage->read_byte(i + j));
-        cliSerial->println();
-    }
-    return(0);
-}
-
-static int8_t
 test_radio_pwm(uint8_t argc, const Menu::arg *argv)
 {
     print_hit_enter();
-    delay(1000);
+    hal.scheduler->delay(1000);
 
     while(1) {
-        delay(20);
+        hal.scheduler->delay(20);
 
         // Filters radio input - adjust filters in the radio.pde file
         // ----------------------------------------------------------
@@ -132,10 +115,10 @@ static int8_t
 test_passthru(uint8_t argc, const Menu::arg *argv)
 {
     print_hit_enter();
-    delay(1000);
+    hal.scheduler->delay(1000);
 
     while(1) {
-        delay(20);
+        hal.scheduler->delay(20);
 
         // New radio frame? (we could use also if((millis()- timer) > 20)
         if (hal.rcin->new_input()) {
@@ -158,14 +141,14 @@ static int8_t
 test_radio(uint8_t argc, const Menu::arg *argv)
 {
     print_hit_enter();
-    delay(1000);
+    hal.scheduler->delay(1000);
 
     // read the radio to set trims
     // ---------------------------
     trim_radio();
 
     while(1) {
-        delay(20);
+        hal.scheduler->delay(20);
         read_radio();
 
         channel_roll->calc_pwm();
@@ -199,7 +182,7 @@ test_failsafe(uint8_t argc, const Menu::arg *argv)
     uint8_t fail_test;
     print_hit_enter();
     for(int16_t i = 0; i < 50; i++) {
-        delay(20);
+        hal.scheduler->delay(20);
         read_radio();
     }
 
@@ -211,12 +194,12 @@ test_failsafe(uint8_t argc, const Menu::arg *argv)
 
     cliSerial->printf_P(PSTR("Unplug battery, throttle in neutral, turn off radio.\n"));
     while(channel_throttle->control_in > 0) {
-        delay(20);
+        hal.scheduler->delay(20);
         read_radio();
     }
 
     while(1) {
-        delay(20);
+        hal.scheduler->delay(20);
         read_radio();
 
         if(channel_throttle->control_in > 0) {
@@ -252,19 +235,19 @@ static int8_t
 test_relay(uint8_t argc, const Menu::arg *argv)
 {
     print_hit_enter();
-    delay(1000);
+    hal.scheduler->delay(1000);
 
     while(1) {
         cliSerial->printf_P(PSTR("Relay on\n"));
         relay.on(0);
-        delay(3000);
+        hal.scheduler->delay(3000);
         if(cliSerial->available() > 0) {
             return (0);
         }
 
         cliSerial->printf_P(PSTR("Relay off\n"));
         relay.off(0);
-        delay(3000);
+        hal.scheduler->delay(3000);
         if(cliSerial->available() > 0) {
             return (0);
         }
@@ -274,7 +257,7 @@ test_relay(uint8_t argc, const Menu::arg *argv)
 static int8_t
 test_wp(uint8_t argc, const Menu::arg *argv)
 {
-    delay(1000);
+    hal.scheduler->delay(1000);
 
     // save the alitude above home option
     if (g.RTL_altitude_cm < 0) {
@@ -314,7 +297,7 @@ static int8_t
 test_xbee(uint8_t argc, const Menu::arg *argv)
 {
     print_hit_enter();
-    delay(1000);
+    hal.scheduler->delay(1000);
     cliSerial->printf_P(PSTR("Begin XBee X-CTU Range and RSSI Test:\n"));
 
     while(1) {
@@ -333,14 +316,14 @@ static int8_t
 test_modeswitch(uint8_t argc, const Menu::arg *argv)
 {
     print_hit_enter();
-    delay(1000);
+    hal.scheduler->delay(1000);
 
     cliSerial->printf_P(PSTR("Control CH "));
 
     cliSerial->println(FLIGHT_MODE_CHANNEL, BASE_DEC);
 
     while(1) {
-        delay(20);
+        hal.scheduler->delay(20);
         uint8_t switchPosition = readSwitch();
         if (oldSwitchPosition != switchPosition) {
             cliSerial->printf_P(PSTR("Position %d\n"),  (int)switchPosition);
@@ -377,36 +360,36 @@ test_shell(uint8_t argc, const Menu::arg *argv)
 //-------------------------------------------------------------------------------------------
 // tests in this section are for real sensors or sensors that have been simulated
 
-#if CONFIG_INS_TYPE == CONFIG_INS_OILPAN || CONFIG_HAL_BOARD == HAL_BOARD_APM1
+#if CONFIG_HAL_BOARD == HAL_BOARD_APM1
 static int8_t
 test_adc(uint8_t argc, const Menu::arg *argv)
 {
     print_hit_enter();
     apm1_adc.Init();
-    delay(1000);
+    hal.scheduler->delay(1000);
     cliSerial->printf_P(PSTR("ADC\n"));
-    delay(1000);
+    hal.scheduler->delay(1000);
 
     while(1) {
         for (int8_t i=0; i<9; i++) cliSerial->printf_P(PSTR("%.1f\t"),apm1_adc.Ch(i));
         cliSerial->println();
-        delay(100);
+        hal.scheduler->delay(100);
         if(cliSerial->available() > 0) {
             return (0);
         }
     }
 }
-#endif // CONFIG_INS_TYPE
+#endif
 
 static int8_t
 test_gps(uint8_t argc, const Menu::arg *argv)
 {
     print_hit_enter();
-    delay(1000);
+    hal.scheduler->delay(1000);
 
     uint32_t last_message_time_ms = 0;
     while(1) {
-        delay(100);
+        hal.scheduler->delay(100);
 
         gps.update();
 
@@ -440,12 +423,12 @@ test_ins(uint8_t argc, const Menu::arg *argv)
     ahrs.reset();
 
     print_hit_enter();
-    delay(1000);
+    hal.scheduler->delay(1000);
     
     uint8_t counter = 0;
 
     while(1) {
-        delay(20);
+        hal.scheduler->delay(20);
         if (hal.scheduler->micros() - fast_loopTimer_us > 19000UL) {
             fast_loopTimer_us       = hal.scheduler->micros();
 
@@ -509,7 +492,7 @@ test_mag(uint8_t argc, const Menu::arg *argv)
     print_hit_enter();
 
     while(1) {
-        delay(20);
+        hal.scheduler->delay(20);
         if (hal.scheduler->micros() - fast_loopTimer_us > 19000UL) {
             fast_loopTimer_us       = hal.scheduler->micros();
 
@@ -572,7 +555,7 @@ test_airspeed(uint8_t argc, const Menu::arg *argv)
         print_enabled(true);
 
         while(1) {
-            delay(20);
+            hal.scheduler->delay(20);
             read_airspeed();
             cliSerial->printf_P(PSTR("%.1f m/s\n"), airspeed.get_airspeed());
 
@@ -593,9 +576,9 @@ test_pressure(uint8_t argc, const Menu::arg *argv)
     init_barometer();
 
     while(1) {
-        delay(100);
+        hal.scheduler->delay(100);
 
-        if (!barometer.healthy) {
+        if (!barometer.healthy()) {
             cliSerial->println_P(PSTR("not healthy"));
         } else {
             cliSerial->printf_P(PSTR("Alt: %0.2fm, Raw: %f Temperature: %.1f\n"),

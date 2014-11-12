@@ -1,4 +1,4 @@
-// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: t -*-
+// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
 #include "AP_TECS.h"
 #include <AP_HAL.h>
@@ -117,7 +117,7 @@ const AP_Param::GroupInfo AP_TECS::var_info[] PROGMEM = {
     // @User: User
     AP_GROUPINFO("LAND_ARSPD", 12, AP_TECS, _landAirspeed, -1),
 
-    // @Param; LAND_THR
+    // @Param: LAND_THR
     // @DisplayName: Cruise throttle during landing approach (percentage)
     // @Description: Use this parameter instead of LAND_ASPD if your platform does not have an airspeed sensor.  It is the cruise throttle during landing approach.  If it is negative if TECS_LAND_ASPD is in use then this value is not used during landing.
     // @Range: -1 to 100
@@ -149,6 +149,22 @@ const AP_Param::GroupInfo AP_TECS::var_info[] PROGMEM = {
 	// @User: Advanced
     AP_GROUPINFO("PITCH_MIN", 16, AP_TECS, _pitch_min, 0),
 
+    // @Param: LAND_SINK
+    // @DisplayName: Sink rate for final landing stage
+    // @Description: The sink rate in meters/second for the final stage of landing.
+	// @Range: 0.0 to 2.0
+	// @Increment: 0.1
+	// @User: Advanced
+    AP_GROUPINFO("LAND_SINK", 17, AP_TECS, _land_sink, 0.25f),
+
+    // @Param: TECS_LAND_TCONST
+    // @DisplayName: Land controller time constant (sec)
+    // @Description: This is the time constant of the TECS control algorithm when in final landing stage of flight. It should be smaller than TECS_TIME_CONST to allow for faster flare
+	// @Range: 1.0-5.0
+	// @Increment: 0.2
+	// @User: Advanced
+    AP_GROUPINFO("LAND_TCONST", 18, AP_TECS, _landTimeConst, 2.0f),
+
     AP_GROUPEND
 };
 
@@ -171,7 +187,7 @@ const AP_Param::GroupInfo AP_TECS::var_info[] PROGMEM = {
 void AP_TECS::update_50hz(float hgt_afe)
 { 
 	// Implement third order complementary filter for height and height rate
-	// estimted height rate = _integ2_state
+	// estimted height rate = _climb_rate
 	// estimated height above field elevation  = _integ3_state
     // Reference Paper : 
 	// Optimising the Gains of the Baro-Inertial Vertical Channel
@@ -181,9 +197,9 @@ void AP_TECS::update_50hz(float hgt_afe)
     // Calculate time in seconds since last update
     uint32_t now = hal.scheduler->micros();
 	float DT = max((now - _update_50hz_last_usec),0)*1.0e-6f;
-	if (DT > 1.0) {
+	if (DT > 1.0f) {
 	    _integ3_state = hgt_afe;
-		_integ2_state = 0.0f;
+		_climb_rate = 0.0f;
 		_integ1_state = 0.0f;
 		DT            = 0.02f; // when first starting TECS, use a
 							   // small time constant
@@ -193,7 +209,7 @@ void AP_TECS::update_50hz(float hgt_afe)
 	// USe inertial nav verical velocity and height if available
 	Vector3f posned, velned;
 	if (_ahrs.get_velocity_NED(velned) && _ahrs.get_relative_position_NED(posned)) {
-		_integ2_state   = - velned.z;
+		_climb_rate   = - velned.z;
 		_integ3_state   = - posned.z;
 	} else {
 		// Get height acceleration
@@ -205,11 +221,11 @@ void AP_TECS::update_50hz(float hgt_afe)
 		float integ1_input = hgt_err * omega2 * _hgtCompFiltOmega;
 		_integ1_state = _integ1_state + integ1_input * DT;
 		float integ2_input = _integ1_state + hgt_ddot_mea + hgt_err * omega2 * 3.0f;
-		_integ2_state = _integ2_state + integ2_input * DT;
-		float integ3_input = _integ2_state + hgt_err * _hgtCompFiltOmega * 3.0f;
+		_climb_rate = _climb_rate + integ2_input * DT;
+		float integ3_input = _climb_rate + hgt_err * _hgtCompFiltOmega * 3.0f;
 		// If more than 1 second has elapsed since last update then reset the integrator state
 		// to the measured height
-		if (DT > 1.0) {
+		if (DT > 1.0f) {
 		    _integ3_state = hgt_afe;
 		} else {
 			_integ3_state = _integ3_state + integ3_input*DT;
@@ -248,7 +264,7 @@ void AP_TECS::_update_speed(void)
     }
 
     // Reset states of time since last update is too large
-    if (DT > 1.0) {
+    if (DT > 1.0f) {
         _integ5_state = (_EAS * EAS2TAS);
         _integ4_state = 0.0f;
 		DT            = 0.1f; // when first starting TECS, use a
@@ -268,8 +284,8 @@ void AP_TECS::_update_speed(void)
     float aspdErr = (_EAS * EAS2TAS) - _integ5_state;
     float integ4_input = aspdErr * _spdCompFiltOmega * _spdCompFiltOmega;
     // Prevent state from winding up
-    if (_integ5_state < 3.1){
-        integ4_input = max(integ4_input , 0.0);
+    if (_integ5_state < 3.1f){
+        integ4_input = max(integ4_input , 0.0f);
     }
     _integ4_state = _integ4_state + integ4_input * DT;
     float integ5_input = _integ4_state + _vel_dot + aspdErr * _spdCompFiltOmega * 1.4142f;
@@ -352,8 +368,25 @@ void AP_TECS::_update_height_demand(void)
 
 	// Apply first order lag to height demand
 	_hgt_dem_adj = 0.05f * _hgt_dem + 0.95f * _hgt_dem_adj_last;
-    _hgt_rate_dem = (_hgt_dem_adj - _hgt_dem_adj_last) / 0.1f;
 	_hgt_dem_adj_last = _hgt_dem_adj;
+
+    // in final landing stage force height rate demand to the
+    // configured sink rate
+	if (_flight_stage == FLIGHT_LAND_FINAL) {
+        if (_flare_counter == 0) {
+            _hgt_rate_dem = _climb_rate;
+        }
+        // bring it in over 1s to prevent overshoot
+        if (_flare_counter < 10) {
+            _hgt_rate_dem = _hgt_rate_dem * 0.8f - 0.2f * _land_sink;
+            _flare_counter++;
+        } else {
+            _hgt_rate_dem = - _land_sink;
+        }
+	} else {
+        _hgt_rate_dem = (_hgt_dem_adj - _hgt_dem_adj_last) / 0.1f;
+        _flare_counter = 0;
+    }
 }
 
 void AP_TECS::_detect_underspeed(void) 
@@ -386,9 +419,21 @@ void AP_TECS::_update_energies(void)
     _SKE_est = 0.5f * _integ5_state * _integ5_state;
 
     // Calculate specific energy rate
-    _SPEdot = _integ2_state * GRAVITY_MSS;
+    _SPEdot = _climb_rate * GRAVITY_MSS;
     _SKEdot = _integ5_state * _vel_dot;
 
+}
+
+/*
+  current time constant. It is lower in landing to try to give a precise approach
+ */
+float AP_TECS::timeConstant(void)
+{
+    if (_flight_stage==FLIGHT_LAND_FINAL ||
+        _flight_stage==FLIGHT_LAND_APPROACH) {
+        return _landTimeConst;
+    }
+    return _timeConst;
 }
 
 void AP_TECS::_update_throttle(void)
@@ -411,12 +456,12 @@ void AP_TECS::_update_throttle(void)
     // If underspeed condition is set, then demand full throttle
     if (_underspeed)
     {
-        _throttle_dem_unc = 1.0f;
+        _throttle_dem = 1.0f;
     }
     else
     {
 		// Calculate gain scaler from specific energy error to throttle
-		float K_STE2Thr = 1 / (_timeConst * (_STEdot_max - _STEdot_min));
+		float K_STE2Thr = 1 / (timeConstant() * (_STEdot_max - _STEdot_min));
 
         // Calculate feed-forward throttle
         float ff_throttle = 0;
@@ -432,7 +477,10 @@ void AP_TECS::_update_throttle(void)
 		// Calculate PD + FF throttle
 		_throttle_dem = (_STE_error + STEdot_error * _thrDamp) * K_STE2Thr + ff_throttle;
 
-		// Rate limit PD + FF throttle
+        // Constrain throttle demand
+        _throttle_dem = constrain_float(_throttle_dem, _THRminf, _THRmaxf);
+
+        // Rate limit PD + FF throttle
 	    // Calculate the throttle increment from the specified slew time
 		if (aparm.throttle_slewrate != 0) {
 			float thrRateIncr = _DT * (_THRmaxf - _THRminf) * aparm.throttle_slewrate * 0.01f;
@@ -443,11 +491,12 @@ void AP_TECS::_update_throttle(void)
 			_last_throttle_dem = _throttle_dem;
 		}
 
-
-		// Calculate integrator state upper and lower limits
-		// Set to a value thqat will allow 0.1 (10%) throttle saturation to allow for noise on the demand
-        float integ_max = (_THRmaxf - _throttle_dem + 0.1f);
-		float integ_min = (_THRminf - _throttle_dem - 0.1f);
+        // Calculate integrator state upper and lower limits
+        // Set to a value that will allow 0.1 (10%) throttle saturation to allow for noise on the demand
+        // Additionally constrain the integrator state amplitude so that the integrator comes off limits faster.
+        float maxAmp = 0.5f*(_THRmaxf - _THRminf);
+        float integ_max = constrain_float((_THRmaxf - _throttle_dem + 0.1f),-maxAmp,maxAmp);
+        float integ_min = constrain_float((_THRminf - _throttle_dem - 0.1f),-maxAmp,maxAmp);
 
   		// Calculate integrator state, constraining state
 		// Set integrator to a max throttle value during climbout
@@ -491,11 +540,11 @@ void AP_TECS::_update_throttle_option(int16_t throttle_nudge)
 	{
 		_throttle_dem = _THRmaxf;
 	}
-	else if (_pitch_dem > 0.0 && _PITCHmaxf > 0.0)
+	else if (_pitch_dem > 0.0f && _PITCHmaxf > 0.0f)
 	{
 		_throttle_dem = nomThr + (_THRmaxf - nomThr) * _pitch_dem / _PITCHmaxf;
 	}
-	else if (_pitch_dem < 0.0 && _PITCHminf < 0.0)
+	else if (_pitch_dem < 0.0f && _PITCHminf < 0.0f)
 	{
 		_throttle_dem = nomThr + (_THRminf - nomThr) * _pitch_dem / _PITCHminf;
 	}
@@ -582,8 +631,8 @@ void AP_TECS::_update_pitch(void)
     // During climbout/takeoff, bias the demanded pitch angle so that zero speed error produces a pitch angle 
     // demand equal to the minimum value (which is )set by the mission plan during this mode). Otherwise the
     // integrator has to catch up before the nose can be raised to reduce speed during climbout.
-	float gainInv = (_integ5_state * _timeConst * GRAVITY_MSS);
-    float temp = SEB_error + SEBdot_error * _ptchDamp + SEBdot_dem * _timeConst;
+	float gainInv = (_integ5_state * timeConstant() * GRAVITY_MSS);
+    float temp = SEB_error + SEBdot_error * _ptchDamp + SEBdot_dem * timeConstant();
     if (_flight_stage == AP_TECS::FLIGHT_TAKEOFF)
     {
     	temp += _PITCHminf * gainInv;
@@ -594,6 +643,8 @@ void AP_TECS::_update_pitch(void)
     _pitch_dem_unc = (temp + _integ7_state) / gainInv;
 
     // Constrain pitch demand
+    _pitch_dem = constrain_float(_pitch_dem_unc, _PITCHminf, _PITCHmaxf);
+
     _pitch_dem = constrain_float(_pitch_dem_unc, _PITCHminf, _PITCHmaxf);
 
     // Rate limit the pitch demand to comply with specified vertical
@@ -614,7 +665,7 @@ void AP_TECS::_update_pitch(void)
 void AP_TECS::_initialise_states(int32_t ptchMinCO_cd, float hgt_afe) 
 {
 	// Initialise states and variables if DT > 1 second or in climbout
-	if (_DT > 1.0)
+	if (_DT > 1.0f)
 	{
 		_integ6_state      = 0.0f;
 		_integ7_state      = 0.0f;
@@ -688,6 +739,13 @@ void AP_TECS::update_pitch_throttle(int32_t hgt_dem_cm,
 	} else {
 		_PITCHminf = max(_pitch_min, aparm.pitch_limit_min_cd * 0.01f);
 	}
+    if (flight_stage == FLIGHT_LAND_FINAL) {
+        // in flare use min pitch from LAND_PITCH_CD
+        _PITCHminf = max(_PITCHminf, aparm.land_pitch_cd * 0.01f);
+
+        // and allow zero throttle
+        _THRminf = 0;
+    }
 	// convert to radians
 	_PITCHmaxf = radians(_PITCHmaxf);
 	_PITCHminf = radians(_PITCHminf);
@@ -729,7 +787,7 @@ void AP_TECS::update_pitch_throttle(int32_t hgt_dem_cm,
 	log_tuning.hgt_dem  = _hgt_dem_adj;
 	log_tuning.hgt      = _integ3_state;
 	log_tuning.dhgt_dem = _hgt_rate_dem;
-	log_tuning.dhgt     = _integ2_state;
+	log_tuning.dhgt     = _climb_rate;
 	log_tuning.spd_dem  = _TAS_dem_adj;
 	log_tuning.spd      = _integ5_state;
 	log_tuning.dspd     = _vel_dot;

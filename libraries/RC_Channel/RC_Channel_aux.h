@@ -67,6 +67,7 @@ public:
         k_flaperon2             = 25,            ///< flaperon, right wing
         k_steering              = 26,            ///< ground steering, used to separate from rudder
         k_parachute_release     = 27,            ///< parachute release
+        k_epm                   = 28,            ///< epm gripper
         k_nr_aux_servo_functions         ///< This must be the last enum value (only add new values _before_ this one)
     } Aux_servo_function_t;
 
@@ -119,6 +120,9 @@ public:
     
     // prevent a channel from being used for auxillary functions
     static void disable_aux_channel(uint8_t channel);
+
+    // return the current function for a channel
+    static Aux_servo_function_t channel_function(uint8_t channel);
 
 private:
     static uint32_t _function_mask;

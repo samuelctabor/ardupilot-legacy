@@ -27,6 +27,7 @@
 #include <stdint.h>
 
 #include <AP_Progmem.h>
+#include <../StorageManager/StorageManager.h>
 
 #define AP_MAX_NAME_SIZE 16
 #define AP_NESTED_GROUPS_ENABLED
@@ -105,10 +106,9 @@ public:
     static bool setup();
 
     // constructor with var_info
-    AP_Param(const struct Info *info, uint16_t eeprom_size) {
-        _eeprom_size = eeprom_size;
+    AP_Param(const struct Info *info)
+    {
         _var_info = info;
-
         uint16_t i;
         for (i=0; pgm_read_byte(&info[i].type) != AP_PARAM_NONE; i++) ;
         _num_vars = i;
@@ -290,7 +290,8 @@ private:
     static const uint8_t        _sentinal_type  = 0x3F;
     static const uint8_t        _sentinal_group = 0xFF;
 
-    static bool                 check_group_info(const struct GroupInfo *group_info, uint16_t *total_size, uint8_t max_bits);
+    static bool                 check_group_info(const struct GroupInfo *group_info, uint16_t *total_size, 
+                                                 uint8_t max_bits, uint8_t prefix_length);
     static bool                 duplicate_key(uint8_t vindex, uint8_t key);
     const struct Info *         find_var_info_group(
                                     const struct GroupInfo *    group_info,
@@ -344,7 +345,7 @@ private:
                                     ParamToken *token,
                                     enum ap_var_type *ptype);
 
-    static uint16_t             _eeprom_size;
+    static StorageAccess        _storage;
     static uint8_t              _num_vars;
     static const struct Info *  _var_info;
 

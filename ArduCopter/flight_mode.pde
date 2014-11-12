@@ -227,6 +227,13 @@ static void exit_mode(uint8_t old_control_mode, uint8_t new_control_mode)
         // this assumes all manual flight modes use get_pilot_desired_throttle to translate pilot input to output throttle
         set_accel_throttle_I_from_pilot_throttle(get_pilot_desired_throttle(g.rc_3.control_in));
     }
+    
+#if FRAME_CONFIG == HELI_FRAME
+    // firmly reset the flybar passthrough to false when exiting acro mode.
+    if (old_control_mode == ACRO) {
+        attitude_control.use_flybar_passthrough(false);
+    }
+#endif //HELI_FRAME
 }
 
 // returns true or false whether mode requires GPS
@@ -252,13 +259,20 @@ static bool manual_flight_mode(uint8_t mode) {
     switch(mode) {
         case ACRO:
         case STABILIZE:
-        case DRIFT:
-        case SPORT:
             return true;
         default:
             return false;
     }
 
+    return false;
+}
+
+// mode_allows_arming - returns true if vehicle can be armed in the specified mode
+//  arming_from_gcs should be set to true if the arming request comes from the ground station
+static bool mode_allows_arming(uint8_t mode, bool arming_from_gcs) {
+    if (manual_flight_mode(mode) || mode == LOITER || mode == ALT_HOLD || mode == POSHOLD || (arming_from_gcs && mode == GUIDED)) {
+        return true;
+    }
     return false;
 }
 
@@ -320,8 +334,3 @@ print_flight_mode(AP_HAL::BetterStream *port, uint8_t mode)
     }
 }
 
-// get_angle_targets_for_reporting() - returns 3d vector of roll, pitch and yaw target angles for logging and reporting to GCS
-static void get_angle_targets_for_reporting(Vector3f& targets)
-{
-    targets = attitude_control.angle_ef_targets();
-}

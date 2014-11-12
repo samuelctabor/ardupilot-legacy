@@ -262,6 +262,7 @@ static void startup_ground(void)
     mission.init();
 
     hal.uartA->set_blocking_writes(false);
+    hal.uartB->set_blocking_writes(false);
     hal.uartC->set_blocking_writes(false);
 
 	gcs_send_text_P(SEVERITY_LOW,PSTR("\n\n Ready to drive."));
@@ -322,6 +323,24 @@ static void set_mode(enum mode mode)
 	if (should_log(MASK_LOG_MODE)) {
 		Log_Write_Mode();
     }
+}
+
+/*
+  set_mode() wrapper for MAVLink SET_MODE
+ */
+static bool mavlink_set_mode(uint8_t mode)
+{
+    switch (mode) {
+    case MANUAL:
+    case HOLD:
+    case LEARNING:
+    case STEERING:
+    case AUTO:
+    case RTL:
+        set_mode((enum mode)mode);
+        return true;
+    }
+    return false;
 }
 
 /*

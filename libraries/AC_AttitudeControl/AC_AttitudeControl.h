@@ -116,11 +116,12 @@ public:
     //
     // earth-frame <-> body-frame conversion functions
     //
-    // frame_conversion_ef_to_bf - converts earth frame rate targets to body frame rate targets
+    // frame_conversion_ef_to_bf - converts earth frame angles or rates to body frame
     void frame_conversion_ef_to_bf(const Vector3f& ef_vector, Vector3f &bf_vector);
 
-    // frame_conversion_bf_to_ef - converts body frame rate targets to earth frame rate targets
-    void frame_conversion_bf_to_ef(const Vector3f& bf_vector, Vector3f &ef_vector);
+    // frame_conversion_bf_to_ef - converts body frame angles or rates to earth frame
+    //  returns false if conversion fails due to gimbal lock
+    bool frame_conversion_bf_to_ef(const Vector3f& bf_vector, Vector3f &ef_vector);
 
     //
     // public accessor functions
@@ -160,6 +161,9 @@ public:
 
     // lean_angle_max - maximum lean angle of the copter in centi-degrees
     int16_t lean_angle_max() const { return _aparm.angle_max; }
+
+    // sqrt_controller - response based on the sqrt of the error instead of the more common linear response
+    static float sqrt_controller(float error, float p, float second_ord_lim);
 
     // user settable parameters
     static const struct AP_Param::GroupInfo var_info[];
@@ -204,25 +208,6 @@ protected:
 
     // get_angle_boost - calculate total body frame throttle required to produce the given earth frame throttle
     virtual int16_t get_angle_boost(int16_t throttle_pwm);
-
-    //
-    // logging
-    //
-
-    // log data on internal state of the controller. Called at 10Hz
-    void log_data(DataFlash_Class &dataflash, uint8_t msgid);
-
-    // dataflash logging packet
-    struct PACKED log_Attitude {
-        LOG_PACKET_HEADER;
-        int16_t roll_in;
-        int16_t roll;
-        int16_t pitch_in;
-        int16_t pitch;
-        int16_t yaw_in;
-        uint16_t yaw;
-        uint16_t nav_yaw;
-    } log_ACAttControl;
 
     // references to external libraries
     const AP_AHRS&      _ahrs;

@@ -145,11 +145,11 @@ void AP_MotorsMatrix::output_armed()
 
     // Throttle is 0 to 1000 only
     // To-Do: we should not really be limiting this here because we don't "own" this _rc_throttle object
-    if (_rc_throttle.servo_out < 0) {
+    if (_rc_throttle.servo_out <= 0) {
         _rc_throttle.servo_out = 0;
         limit.throttle_lower = true;
     }
-    if (_rc_throttle.servo_out > _max_throttle) {
+    if (_rc_throttle.servo_out >= _max_throttle) {
         _rc_throttle.servo_out = _max_throttle;
         limit.throttle_upper = true;
     }
@@ -179,12 +179,11 @@ void AP_MotorsMatrix::output_armed()
         // Every thing is limited
         limit.roll_pitch = true;
         limit.yaw = true;
-        limit.throttle_lower = true;
 
     } else {
 
         // check if throttle is below limit
-        if (_rc_throttle.radio_out <= out_min_pwm) {       // perhaps being at min throttle itself is not a problem, only being under is
+        if (_rc_throttle.servo_out <= _min_throttle) {  // perhaps being at min throttle itself is not a problem, only being under is
             limit.throttle_lower = true;
         }
 
@@ -385,17 +384,21 @@ void AP_MotorsMatrix::add_motor_raw(int8_t motor_num, float roll_fac, float pitc
     }
 }
 
-// add_motor using just position and prop direction
+// add_motor using just position and prop direction - assumes that for each motor, roll and pitch factors are equal
 void AP_MotorsMatrix::add_motor(int8_t motor_num, float angle_degrees, float yaw_factor, uint8_t testing_order)
 {
-    // call raw motor set-up method
+    add_motor(motor_num, angle_degrees, angle_degrees, yaw_factor, testing_order);
+}
+
+// add_motor using position and prop direction. Roll and Pitch factors can differ (for asymmetrical frames)
+void AP_MotorsMatrix::add_motor(int8_t motor_num, float roll_factor_in_degrees, float pitch_factor_in_degrees, float yaw_factor, uint8_t testing_order)
+{
     add_motor_raw(
         motor_num,
-        cosf(radians(angle_degrees + 90)),               // roll factor
-        cosf(radians(angle_degrees)),                    // pitch factor
-        yaw_factor,                                      // yaw factor
+        cosf(radians(roll_factor_in_degrees + 90)),
+        cosf(radians(pitch_factor_in_degrees)),
+        yaw_factor,
         testing_order);
-
 }
 
 // remove_motor - disabled motor and clears all roll, pitch, throttle factors for this motor

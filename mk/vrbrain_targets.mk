@@ -41,7 +41,7 @@ VRBRAIN_VB51_CONFIG_FILE=config_vrbrain-v51_APM.mk
 VRBRAIN_VU51_CONFIG_FILE=config_vrubrain-v51_APM.mk
 VRBRAIN_VH10_CONFIG_FILE=config_vrhero-v10_APM.mk
 
-SKETCHFLAGS=$(SKETCHLIBINCLUDES) -I$(PWD) -DARDUPILOT_BUILD -DCONFIG_HAL_BOARD=HAL_BOARD_VRBRAIN -DSKETCHNAME="\\\"$(SKETCH)\\\"" -DSKETCH_MAIN=ArduPilot_main -DAPM_BUILD_DIRECTORY=APM_BUILD_$(SKETCH)
+SKETCHFLAGS=$(SKETCHLIBINCLUDES) -I$(PWD) -DARDUPILOT_BUILD -DTESTS_MATHLIB_DISABLE -DCONFIG_HAL_BOARD=HAL_BOARD_VRBRAIN -DSKETCHNAME="\\\"$(SKETCH)\\\"" -DSKETCH_MAIN=ArduPilot_main -DAPM_BUILD_DIRECTORY=APM_BUILD_$(SKETCH)
 
 WARNFLAGS = -Wno-psabi -Wno-packed
 
@@ -145,7 +145,9 @@ vrhero-v10: $(BUILDROOT)/make.flags $(VRBRAIN_ROOT)/Archives/vrhero-v10.export $
 #vrbrain: vrbrain-v40 vrbrain-v45 vrbrain-v50 vrbrain-v51 vrubrain-v51 vrhero-v10
 vrbrain: vrbrain-v45 vrbrain-v51 vrubrain-v51
 
-vrbrain-clean: clean vrbrain-archives-clean
+vrbrain-clean: clean vrbrain-build-clean vrbrain-archives-clean
+
+vrbrain-build-clean:
 	$(v) /bin/rm -rf $(VRBRAIN_ROOT)/makefiles/build $(VRBRAIN_ROOT)/Build
 
 vrbrain-cleandep: clean

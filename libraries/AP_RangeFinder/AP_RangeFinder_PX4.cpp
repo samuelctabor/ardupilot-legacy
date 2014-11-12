@@ -39,7 +39,9 @@ uint8_t AP_RangeFinder_PX4::num_px4_instances = 0;
    already know that we should setup the rangefinder
 */
 AP_RangeFinder_PX4::AP_RangeFinder_PX4(RangeFinder &_ranger, uint8_t instance, RangeFinder::RangeFinder_State &_state) :
-    AP_RangeFinder_Backend(_ranger, instance, _state)
+	AP_RangeFinder_Backend(_ranger, instance, _state),
+    _last_max_distance_cm(-1),
+    _last_min_distance_cm(-1)
 {
     _fd = open_driver();
 
@@ -111,6 +113,18 @@ void AP_RangeFinder_PX4::update(void)
     float sum = 0;
     uint16_t count = 0;
 
+    if (_last_max_distance_cm != ranger._max_distance_cm[state.instance] ||
+        _last_min_distance_cm != ranger._min_distance_cm[state.instance]) {
+        float max_distance = ranger._max_distance_cm[state.instance]*0.01f;
+        float min_distance = ranger._min_distance_cm[state.instance]*0.01f;
+        if (ioctl(_fd, RANGEFINDERIOCSETMAXIUMDISTANCE, (unsigned long)&max_distance) == 0 &&
+            ioctl(_fd, RANGEFINDERIOCSETMINIUMDISTANCE, (unsigned long)&min_distance) == 0) {
+            _last_max_distance_cm = ranger._max_distance_cm[state.instance];
+            _last_min_distance_cm = ranger._min_distance_cm[state.instance];
+        }
+    }
+
+
     while (::read(_fd, &range_report, sizeof(range_report)) == sizeof(range_report) &&
            range_report.timestamp != _last_timestamp) {
             // Only take valid readings
@@ -122,7 +136,7 @@ void AP_RangeFinder_PX4::update(void)
     }
 
     // consider the range finder healthy if we got a reading in the last 0.2s
-    state.healthy = (hrt_absolute_time() - _last_timestamp < 200000);
+    state.healthy = (hal.scheduler->micros64() - _last_timestamp < 200000);
 
     if (count != 0) {
         state.distance_cm = sum / count * 100.0f;

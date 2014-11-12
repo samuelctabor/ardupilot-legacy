@@ -33,12 +33,12 @@
 
 extern const AP_HAL::HAL &hal;
 
-// #define ENABLE_FASTSERIAL_DEBUG
+#define ENABLE_DEBUG 0
 
-#ifdef ENABLE_FASTSERIAL_DEBUG
- # define serialDebug(fmt, args ...)  do {hal.console->printf("%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); delay(0); } while(0)
+#if ENABLE_DEBUG
+ # define Debug(fmt, args ...)  do {hal.console->printf("%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); } while(0)
 #else
- # define serialDebug(fmt, args ...)
+ # define Debug(fmt, args ...)
 #endif
 
 // some useful progmem macros
@@ -68,20 +68,20 @@ extern const AP_HAL::HAL &hal;
 // static member variables for AP_Param.
 //
 
-// max EEPROM write size. This is usually less than the physical
-// size as only part of the EEPROM is reserved for parameters
-uint16_t AP_Param::_eeprom_size;
-
 // number of rows in the _var_info[] table
 uint8_t AP_Param::_num_vars;
 
 // storage and naming information about all types that can be saved
 const AP_Param::Info *AP_Param::_var_info;
 
+// storage object
+StorageAccess AP_Param::_storage(StorageManager::StorageParam);
+
+
 // write to EEPROM
 void AP_Param::eeprom_write_check(const void *ptr, uint16_t ofs, uint8_t size)
 {
-    hal.storage->write_block(ofs, ptr, size);
+    _storage.write_block(ofs, ptr, size);
 }
 
 // write a sentinal value at the given offset
@@ -100,7 +100,7 @@ void AP_Param::erase_all(void)
 {
     struct EEPROM_header hdr;
 
-    serialDebug("erase_all");
+    Debug("erase_all");
 
     // write the header
     hdr.magic[0] = k_EEPROM_magic0;
@@ -116,7 +116,8 @@ void AP_Param::erase_all(void)
 // validate a group info table
 bool AP_Param::check_group_info(const struct AP_Param::GroupInfo *  group_info,
                                 uint16_t *                          total_size,
-                                uint8_t                             group_shift)
+                                uint8_t                             group_shift,
+                                uint8_t                             prefix_length)
 {
     uint8_t type;
     int8_t max_idx = -1;
@@ -128,11 +129,11 @@ bool AP_Param::check_group_info(const struct AP_Param::GroupInfo *  group_info,
             // a nested group
             const struct GroupInfo *ginfo = (const struct GroupInfo *)PGM_POINTER(&group_info[i].group_info);
             if (group_shift + _group_level_shift >= _group_bits) {
-                // double nesting of groups is not allowed
+                Debug("double group nesting in %S", group_info[i].name);
                 return false;
             }
             if (ginfo == NULL ||
-                !check_group_info(ginfo, total_size, group_shift + _group_level_shift)) {
+                !check_group_info(ginfo, total_size, group_shift + _group_level_shift, prefix_length + strlen_P(group_info[i].name))) {
                 return false;
             }
             continue;
@@ -140,17 +141,21 @@ bool AP_Param::check_group_info(const struct AP_Param::GroupInfo *  group_info,
 #endif // AP_NESTED_GROUPS_ENABLED
         uint8_t idx = PGM_UINT8(&group_info[i].idx);
         if (idx >= (1<<_group_level_shift)) {
-            // passed limit on table size
+            Debug("idx too large (%u) in %S", idx, group_info[i].name);
             return false;
         }
         if ((int8_t)idx <= max_idx) {
-            // the indexes must be in increasing order
+            Debug("indexes must be in increasing order in %S", group_info[i].name);
             return false;
         }
         max_idx = (int8_t)idx;
         uint8_t size = type_size((enum ap_var_type)type);
         if (size == 0) {
-            // not a valid type
+            Debug("invalid type in %S", group_info[i].name);
+            return false;
+        }
+        if (prefix_length + strlen_P(group_info[i].name) > 16) {
+            Debug("suffix is too long in %S", group_info[i].name);
             return false;
         }
         (*total_size) += size + sizeof(struct Param_header);
@@ -186,7 +191,7 @@ bool AP_Param::check_var_info(void)
             }
             const struct GroupInfo *group_info = (const struct GroupInfo *)PGM_POINTER(&_var_info[i].group_info);
             if (group_info == NULL ||
-                !check_group_info(group_info, &total_size, 0)) {
+                !check_group_info(group_info, &total_size, 0, strlen_P(_var_info[i].name))) {
                 return false;
             }
         } else {
@@ -216,16 +221,16 @@ bool AP_Param::setup(void)
 {
     struct EEPROM_header hdr;
 
-    serialDebug("setup %u vars", (unsigned)_num_vars);
+    Debug("setup %u vars", (unsigned)_num_vars);
 
     // check the header
-    hal.storage->read_block(&hdr, 0, sizeof(hdr));
+    _storage.read_block(&hdr, 0, sizeof(hdr));
     if (hdr.magic[0] != k_EEPROM_magic0 ||
         hdr.magic[1] != k_EEPROM_magic1 ||
         hdr.revision != k_EEPROM_revision) {
         // header doesn't match. We can't recover any variables. Wipe
         // the header and setup the sentinal directly after the header
-        serialDebug("bad header in setup - erasing");
+        Debug("bad header in setup - erasing");
         erase_all();
     }
 
@@ -447,7 +452,7 @@ uint8_t AP_Param::type_size(enum ap_var_type type)
     case AP_PARAM_MATRIX3F:
         return 3*3*4;
     }
-    serialDebug("unknown type %u\n", type);
+    Debug("unknown type %u\n", type);
     return 0;
 }
 
@@ -460,8 +465,8 @@ bool AP_Param::scan(const AP_Param::Param_header *target, uint16_t *pofs)
 {
     struct Param_header phdr;
     uint16_t ofs = sizeof(AP_Param::EEPROM_header);
-    while (ofs < _eeprom_size) {
-        hal.storage->read_block(&phdr, ofs, sizeof(phdr));
+    while (ofs < _storage.size()) {
+        _storage.read_block(&phdr, ofs, sizeof(phdr));
         if (phdr.type == target->type &&
             phdr.key == target->key &&
             phdr.group_element == target->group_element) {
@@ -481,7 +486,7 @@ bool AP_Param::scan(const AP_Param::Param_header *target, uint16_t *pofs)
         ofs += type_size((enum ap_var_type)phdr.type) + sizeof(phdr);
     }
     *pofs = 0xffff;
-    serialDebug("scan past end of eeprom");
+    Debug("scan past end of eeprom");
     return false;
 }
 
@@ -515,7 +520,7 @@ void AP_Param::copy_name_token(const ParamToken &token, char *buffer, size_t buf
     const struct AP_Param::Info *info = find_var_info_token(token, &group_element, &ginfo, &idx);
     if (info == NULL) {
         *buffer = 0;
-        serialDebug("no info found");
+        Debug("no info found");
         return;
     }
     strncpy_P(buffer, info->name, buffer_size);
@@ -714,7 +719,7 @@ bool AP_Param::save(bool force_save)
         }
     }
 
-    if (ofs+type_size((enum ap_var_type)phdr.type)+2*sizeof(phdr) >= _eeprom_size) {
+    if (ofs+type_size((enum ap_var_type)phdr.type)+2*sizeof(phdr) >= _storage.size()) {
         // we are out of room for saving variables
         hal.console->println_P(PSTR("EEPROM full"));
         return false;
@@ -777,7 +782,7 @@ bool AP_Param::load(void)
     }
 
     // found it
-    hal.storage->read_block(ap, ofs+sizeof(phdr), type_size((enum ap_var_type)phdr.type));
+    _storage.read_block(ap, ofs+sizeof(phdr), type_size((enum ap_var_type)phdr.type));
     return true;
 }
 
@@ -860,8 +865,8 @@ bool AP_Param::load_all(void)
     struct Param_header phdr;
     uint16_t ofs = sizeof(AP_Param::EEPROM_header);
 
-    while (ofs < _eeprom_size) {
-        hal.storage->read_block(&phdr, ofs, sizeof(phdr));
+    while (ofs < _storage.size()) {
+        _storage.read_block(&phdr, ofs, sizeof(phdr));
         // note that this is an || not an && for robustness
         // against power off while adding a variable
         if (phdr.type == _sentinal_type ||
@@ -876,14 +881,14 @@ bool AP_Param::load_all(void)
 
         info = find_by_header(phdr, &ptr);
         if (info != NULL) {
-            hal.storage->read_block(ptr, ofs+sizeof(phdr), type_size((enum ap_var_type)phdr.type));
+            _storage.read_block(ptr, ofs+sizeof(phdr), type_size((enum ap_var_type)phdr.type));
         }
 
         ofs += type_size((enum ap_var_type)phdr.type) + sizeof(phdr);
     }
 
     // we didn't find the sentinal
-    serialDebug("no sentinal in load_all");
+    Debug("no sentinal in load_all");
     return false;
 }
 
@@ -1103,7 +1108,7 @@ void AP_Param::convert_old_parameter(const struct ConversionInfo *info)
 
     // load the old value from EEPROM
     uint8_t old_value[type_size((enum ap_var_type)header.type)];
-    hal.storage->read_block(old_value, pofs+sizeof(header), sizeof(old_value));
+    _storage.read_block(old_value, pofs+sizeof(header), sizeof(old_value));
     const AP_Param *ap = (const AP_Param *)&old_value[0];
 
     // find the new variable in the variable structures

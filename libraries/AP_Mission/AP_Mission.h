@@ -21,6 +21,7 @@
 #include <AP_Param.h>
 #include <AP_AHRS.h>
 #include <AP_HAL.h>
+#include <../StorageManager/StorageManager.h>
 
 // definitions
 #define AP_MISSION_EEPROM_VERSION           0x65AE  // version number stored in first four bytes of eeprom.  increment this by one when eeprom format is changed
@@ -42,21 +43,6 @@
 class AP_Mission {
 
 public:
-
-    // nav guided command
-    struct PACKED Nav_Guided_Command {
-        float alt_min;          // min alt below which the command will be aborted.  0 for no lower alt limit
-        float alt_max;          // max alt above which the command will be aborted.  0 for no upper alt limit
-        float horiz_max;        // max horizontal distance the vehicle can move before the command will be aborted.  0 for no horizontal limit
-    };
-
-    // nav velocity command
-    struct PACKED Nav_Velocity_Command {
-        float x;                // lat (i.e. north) velocity in m/s
-        float y;                // lon (i.e. east) velocity in m/s
-        float z;                // vertical velocity in m/s
-    };
-
     // jump command structure
     struct PACKED Jump_Command {
         uint16_t target;        // target command id
@@ -120,13 +106,21 @@ public:
         float meters;           // distance
     };
 
+    // gripper command structure
+    struct PACKED Gripper_Command {
+        uint8_t num;            // gripper number
+        uint8_t action;         // action (0 = release, 1 = grab)
+    };
+
+    // nav guided command
+    struct PACKED Guided_Limits_Command {
+        // max time is held in p1 field
+        float alt_min;          // min alt below which the command will be aborted.  0 for no lower alt limit
+        float alt_max;          // max alt above which the command will be aborted.  0 for no upper alt limit
+        float horiz_max;        // max horizontal distance the vehicle can move before the command will be aborted.  0 for no horizontal limit
+    };
+
     union PACKED Content {
-        // Nav_Guided_Command
-        Nav_Guided_Command nav_guided;
-
-        // Nav_Velocity_Command
-        Nav_Velocity_Command nav_velocity;
-
         // jump structure
         Jump_Command jump;
 
@@ -157,6 +151,12 @@ public:
         // cam trigg distance
         Cam_Trigg_Distance cam_trigg_dist;
 
+        // do-gripper
+        Gripper_Command gripper;
+
+        // do-guided-limits
+        Guided_Limits_Command guided_limits;
+
         // location
         Location location;      // Waypoint location
 
@@ -184,7 +184,7 @@ public:
     };
 
     /// constructor
-    AP_Mission(AP_AHRS &ahrs, mission_cmd_fn_t cmd_start_fn, mission_cmd_fn_t cmd_verify_fn, mission_complete_fn_t mission_complete_fn, uint16_t storage_start, uint16_t storage_end) :
+    AP_Mission(AP_AHRS &ahrs, mission_cmd_fn_t cmd_start_fn, mission_cmd_fn_t cmd_verify_fn, mission_complete_fn_t mission_complete_fn) :
         _ahrs(ahrs),
         _cmd_start_fn(cmd_start_fn),
         _cmd_verify_fn(cmd_verify_fn),
@@ -194,10 +194,6 @@ public:
     {
         // load parameter defaults
         AP_Param::setup_object_defaults(this, var_info);
-
-        // calculate
-        _storage_start = storage_start;
-        _cmd_total_max = ((storage_end - storage_start - 4) / AP_MISSION_EEPROM_COMMAND_SIZE) -1;   // -4 to remove space for eeprom version number, -1 to be safe
 
         // clear commands
         _nav_cmd.index = AP_MISSION_CMD_INDEX_NONE;
@@ -223,7 +219,7 @@ public:
     uint16_t num_commands() const { return _cmd_total; }
 
     /// num_commands_max - returns maximum number of commands that can be stored
-    uint16_t num_commands_max() const {return _cmd_total_max; }
+    uint16_t num_commands_max() const;
 
     /// start - resets current commands to point to the beginning of the mission
     ///     To-Do: should we validate the mission first and return true/false?
@@ -324,10 +320,16 @@ public:
     // return the last time the mission changed in milliseconds
     uint32_t last_change_time_ms(void) const { return _last_change_time_ms; }
 
+    // find the nearest landing sequence starting point (DO_LAND_START) and
+    // return its index.  Returns 0 if no appropriate DO_LAND_START point can
+    // be found.
+    uint16_t get_landing_sequence_start();
+
     // user settable parameters
     static const struct AP_Param::GroupInfo var_info[];
 
 private:
+    static StorageAccess _storage;
 
     struct Mission_Flags {
         mission_state state;
@@ -396,8 +398,6 @@ private:
     mission_complete_fn_t   _mission_complete_fn;   // pointer to function which will be called when mission completes
 
     // internal variables
-    uint16_t                _storage_start; // first position we are free to use in eeprom storage
-    uint16_t                _cmd_total_max; // maximum number of commands we can store
     struct Mission_Command  _nav_cmd;   // current "navigation" command.  It's position in the command list is held in _nav_cmd.index
     struct Mission_Command  _do_cmd;    // current "do" command.  It's position in the command list is held in _do_cmd.index
     uint16_t                _prev_nav_cmd_index;    // index of the previous "navigation" command.  Rarely used which is why we don't store the whole command

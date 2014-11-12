@@ -35,24 +35,24 @@ const AP_Param::GroupInfo AP_Mount::var_info[] PROGMEM = {
     // @Param: RETRACT_X
     // @DisplayName: Mount roll angle when in retracted position
     // @Description: Mount roll angle when in retracted position
-    // @Units: Centi-Degrees
-    // @Range: -18000 17999
+    // @Units: Degrees
+    // @Range: -180.00 179.99
     // @Increment: 1
     // @User: Standard
 
     // @Param: RETRACT_Y
     // @DisplayName: Mount tilt/pitch angle when in retracted position
     // @Description: Mount tilt/pitch angle when in retracted position
-    // @Units: Centi-Degrees
-    // @Range: -18000 17999
+    // @Units: Degrees
+    // @Range: -180.00 179.99
     // @Increment: 1
     // @User: Standard
 
     // @Param: RETRACT_Z
     // @DisplayName: Mount yaw/pan angle when in retracted position
     // @Description: Mount yaw/pan angle when in retracted position
-    // @Units: Centi-Degrees
-    // @Range: -18000 17999
+    // @Units: Degrees
+    // @Range: -180.00 179.99
     // @Increment: 1
     // @User: Standard
     AP_GROUPINFO("RETRACT",    1, AP_Mount, _retract_angles, 0),
@@ -61,24 +61,24 @@ const AP_Param::GroupInfo AP_Mount::var_info[] PROGMEM = {
     // @Param: NEUTRAL_X
     // @DisplayName: Mount roll angle when in neutral position
     // @Description: Mount roll angle when in neutral position
-    // @Units: Centi-Degrees
-    // @Range: -18000 17999
+    // @Units: Degrees
+    // @Range: -180.00 179.99
     // @Increment: 1
     // @User: Standard
 
     // @Param: NEUTRAL_Y
     // @DisplayName: Mount tilt/pitch angle when in neutral position
     // @Description: Mount tilt/pitch angle when in neutral position
-    // @Units: Centi-Degrees
-    // @Range: -18000 17999
+    // @Units: Degrees
+    // @Range: -180.00 179.99
     // @Increment: 1
     // @User: Standard
 
     // @Param: NEUTRAL_Z
     // @DisplayName: Mount pan/yaw angle when in neutral position
     // @Description: Mount pan/yaw angle when in neutral position
-    // @Units: Centi-Degrees
-    // @Range: -18000 17999
+    // @Units: Degrees
+    // @Range: -180.00 179.99
     // @Increment: 1
     // @User: Standard
     AP_GROUPINFO("NEUTRAL",    2, AP_Mount, _neutral_angles, 0),
@@ -86,22 +86,22 @@ const AP_Param::GroupInfo AP_Mount::var_info[] PROGMEM = {
     // @Param: CONTROL_X
     // @DisplayName: Mount roll angle command from groundstation
     // @Description: Mount roll angle when in MavLink or RC control operation mode
-    // @Units: Centi-Degrees
-    // @Range: -18000 17999
+    // @Units: Degrees
+    // @Range: -180.00 179.99
     // @Increment: 1
 
     // @Param: CONTROL_Y
     // @DisplayName: Mount tilt/pitch angle command from groundstation
     // @Description: Mount tilt/pitch angle when in MavLink or RC control operation mode
-    // @Units: Centi-Degrees
-    // @Range: -18000 17999
+    // @Units: Degrees
+    // @Range: -180.00 179.99
     // @Increment: 1
 
     // @Param: CONTROL_Z
     // @DisplayName: Mount pan/yaw angle command from groundstation
     // @Description: Mount pan/yaw angle when in MavLink or RC control operation mode
-    // @Units: Centi-Degrees
-    // @Range: -18000 17999
+    // @Units: Degrees
+    // @Range: -180.00 179.99
     // @Increment: 1
     AP_GROUPINFO("CONTROL",    3, AP_Mount, _control_angles, 0),
 
@@ -213,11 +213,35 @@ const AP_Param::GroupInfo AP_Mount::var_info[] PROGMEM = {
     AP_GROUPINFO("JSTICK_SPD",  16, AP_Mount, _joystick_speed, 0),
 #endif
 
+    // @Param: LEAD_RLL
+    // @DisplayName: Roll stabilization lead time
+    // @Description: Causes the servo angle output to lead the current angle of the vehicle by some amount of time based on current angular rate, compensating for servo delay. Increase until the servo is responsive but doesn't overshoot. Does nothing with pan stabilization enabled.
+    // @Units: Seconds
+    // @Range: 0.0 0.2
+    // @Increment: .005
+    // @User: Standard
+    AP_GROUPINFO("LEAD_RLL", 17, AP_Mount, _roll_stb_lead, 0.0f),
+
+    // @Param: LEAD_PTCH
+    // @DisplayName: Pitch stabilization lead time
+    // @Description: Causes the servo angle output to lead the current angle of the vehicle by some amount of time based on current angular rate. Increase until the servo is responsive but doesn't overshoot. Does nothing with pan stabilization enabled.
+    // @Units: Seconds
+    // @Range: 0.0 0.2
+    // @Increment: .005
+    // @User: Standard
+    AP_GROUPINFO("LEAD_PTCH", 18, AP_Mount, _pitch_stb_lead, 0.0f),
+
     AP_GROUPEND
 };
 
 AP_Mount::AP_Mount(const struct Location *current_loc, const AP_AHRS &ahrs, uint8_t id) :
-    _ahrs(ahrs)
+    _ahrs(ahrs),
+    _roll_control_angle(0.0f),
+    _tilt_control_angle(0.0f),
+    _pan_control_angle(0.0f),
+    _roll_angle(0.0f),
+    _tilt_angle(0.0f),
+    _pan_angle(0.0f)
 {
 	AP_Param::setup_object_defaults(this, var_info);
     _current_loc = current_loc;
@@ -615,6 +639,21 @@ AP_Mount::stabilize()
         }
         if (_stab_tilt) {
             _tilt_angle -= degrees(_ahrs.pitch);
+        }
+
+        // Add lead filter.
+        const Vector3f &gyro = _ahrs.get_gyro();
+
+        if (_stab_roll && _roll_stb_lead != 0.0f && fabsf(_ahrs.pitch) < M_PI/3.0f) {
+            // Compute rate of change of euler roll angle
+            float roll_rate = gyro.x + (_ahrs.sin_pitch() / _ahrs.cos_pitch()) * (gyro.y * _ahrs.sin_roll() + gyro.z * _ahrs.cos_roll());
+            _roll_angle -= degrees(roll_rate) * _roll_stb_lead;
+        }
+
+        if (_stab_tilt && _pitch_stb_lead != 0.0f) {
+            // Compute rate of change of euler pitch angle
+            float pitch_rate = _ahrs.cos_pitch() * gyro.y - _ahrs.sin_roll() * gyro.z;
+            _tilt_angle -= degrees(pitch_rate) * _pitch_stb_lead;
         }
     }
 #endif

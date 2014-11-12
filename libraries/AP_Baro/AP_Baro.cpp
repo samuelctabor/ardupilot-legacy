@@ -34,12 +34,14 @@ const AP_Param::GroupInfo AP_Baro::var_info[] PROGMEM = {
     // @Param: ABS_PRESS
     // @DisplayName: Absolute Pressure
     // @Description: calibrated ground pressure in Pascals
+    // @Units: pascals
     // @Increment: 1
     AP_GROUPINFO("ABS_PRESS", 2, AP_Baro, _ground_pressure, 0),
 
     // @Param: TEMP
     // @DisplayName: ground temperature
     // @Description: calibrated ground temperature in degrees Celsius
+    // @Units: degrees celsius
     // @Increment: 1
     AP_GROUPINFO("TEMP", 3, AP_Baro, _ground_temperature, 0),
 
@@ -67,7 +69,7 @@ void AP_Baro::calibrate()
 
     {
         uint32_t tstart = hal.scheduler->millis();
-        while (ground_pressure == 0 || !healthy) {
+        while (ground_pressure == 0 || !_flags.healthy) {
             read();         // Get initial data from absolute pressure sensor
             if (hal.scheduler->millis() - tstart > 500) {
                 hal.scheduler->panic(PSTR("PANIC: AP_Baro::read unsuccessful "
@@ -89,7 +91,7 @@ void AP_Baro::calibrate()
                 hal.scheduler->panic(PSTR("PANIC: AP_Baro::read unsuccessful "
                         "for more than 500ms in AP_Baro::calibrate [2]\r\n"));
             }
-        } while (!healthy);
+        } while (!_flags.healthy);
         ground_pressure     = get_pressure();
         ground_temperature  = get_temperature();
 
@@ -106,7 +108,7 @@ void AP_Baro::calibrate()
                 hal.scheduler->panic(PSTR("PANIC: AP_Baro::read unsuccessful "
                         "for more than 500ms in AP_Baro::calibrate [3]\r\n"));
             }
-        } while (!healthy);
+        } while (!_flags.healthy);
         ground_pressure = (ground_pressure * 0.8f) + (get_pressure() * 0.2f);
         ground_temperature = (ground_temperature * 0.8f) + 
             (get_temperature() * 0.2f);
@@ -132,7 +134,7 @@ void AP_Baro::update_calibration()
 
 // return altitude difference in meters between current pressure and a
 // given base_pressure in Pascal
-float AP_Baro::get_altitude_difference(float base_pressure, float pressure)
+float AP_Baro::get_altitude_difference(float base_pressure, float pressure) const
 {
     float ret;
 #if HAL_CPU_CLASS <= HAL_CPU_CLASS_16
@@ -168,7 +170,7 @@ float AP_Baro::get_altitude(void)
     }
 
     float pressure = get_pressure();
-    _altitude = get_altitude_difference(_ground_pressure, pressure);
+    float alt = get_altitude_difference(_ground_pressure, pressure);
 
 	// NEW
 	//hal.console->printf_P(PSTR("%f %f %i\n"),_last_altitude,_altitude,(_last_altitude == _altitude));	
@@ -178,7 +180,16 @@ float AP_Baro::get_altitude(void)
     }
     _last_altitude = _altitude;
 	
+    // record that we have consumed latest data
     _last_altitude_t = _last_update;
+
+    // sanity check altitude
+    if (isnan(alt) || isinf(alt)) {
+        _flags.alt_ok = false;
+    } else {
+        _altitude = alt;
+        _flags.alt_ok = true;
+    }
 
     // ensure the climb rate filter is updated
     _climb_rate_filter.update(_altitude, _last_update);

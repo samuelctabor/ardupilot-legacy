@@ -15,10 +15,16 @@ namespace Linux {
     class LinuxAnalogSource;
     class LinuxAnalogIn;
     class LinuxStorage;
-    class LinuxGPIO;
+    class LinuxGPIO_BBB;
+    class LinuxGPIO_RPI;
+    class LinuxStorage;
+    class LinuxStorage_FRAM;
     class LinuxDigitalSource;
     class LinuxRCInput;
-    class LinuxRCOutput;
+    class LinuxRCInput_PRU;
+    class LinuxRCInput_Navio;
+    class LinuxRCOutput_PRU;
+    class LinuxRCOutput_Navio;
     class LinuxSemaphore;
     class LinuxScheduler;
     class LinuxUtil;
