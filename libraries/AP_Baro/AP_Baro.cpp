@@ -172,14 +172,6 @@ float AP_Baro::get_altitude(void)
     float pressure = get_pressure();
     float alt = get_altitude_difference(_ground_pressure, pressure);
 
-	// NEW
-	//hal.console->printf_P(PSTR("%f %f %i\n"),_last_altitude,_altitude,(_last_altitude == _altitude));	
-	if (_last_altitude == _altitude) {
-        // no new information - DONT update the climb rate filter.
-        return _altitude;
-    }
-    _last_altitude = _altitude;
-	
     // record that we have consumed latest data
     _last_altitude_t = _last_update;
 
