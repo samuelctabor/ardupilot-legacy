@@ -175,6 +175,10 @@ void SoaringController::init_thermalling()
     float cov_q1 = pow(thermal_q1,2); //State covariance
     float cov_q2 = pow(thermal_q2,2); //State covariance
     float q[N][N] = {{cov_q1, 0, 0, 0},{0, cov_q2, 0, 0},{0,0, cov_q2,0},{0,0,0,cov_q2}};
+    float p[N][N] = {{INITIAL_STRENGTH_COVARIANCE, 0,                         0,                           0},
+                 {0,                           INITIAL_RADIUS_COVARIANCE, 0,                           0},
+                 {0,                           0,                         INITIAL_POSITION_COVARIANCE, 0},
+                 {0,                           0,                         0,                           INITIAL_POSITION_COVARIANCE }}; //Covariance matrix
          
     // New state vector filter will be reset. Thermal location is placed in front of a/c 
     float xr[] = {INITIAL_THERMAL_STRENGTH, INITIAL_THERMAL_RADIUS, thermal_distance_ahead*cos(_ahrs.yaw), thermal_distance_ahead*sin(_ahrs.yaw)};      

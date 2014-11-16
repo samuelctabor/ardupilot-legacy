@@ -32,10 +32,7 @@ class SoaringController
 
   
   AP_SpdHgtControl *&_spdHgt;
-  float p[N][N] = {{INITIAL_STRENGTH_COVARIANCE, 0,                         0,                           0},
-                 {0,                           INITIAL_RADIUS_COVARIANCE, 0,                           0},
-                 {0,                           0,                         INITIAL_POSITION_COVARIANCE, 0},
-                 {0,                           0,                         0,                           INITIAL_POSITION_COVARIANCE }}; //Covariance matrix
+ 
 
  
  // Keep track of the waypoint so we can restore after coming out of thermal mode.
