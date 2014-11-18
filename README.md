@@ -1,5 +1,14 @@
 #ArduPilot Project#
 
+###Soaring fork of Ardupilot###
+
+![](http://api.ning.com/files/U8LSueg-IYpD*My3Fcer08kXG4xdRKWgJOo1mETU4*Zw1OPjt4OGUJV9a7lC3ngqTnSjIzBnZE3HX0pSBPuZlOcBhaEVzPe2/WindCorrected.png)
+
+This fork adds code for unpowered flight, using atmospheric thermals to gain altitude. It uses a netto variometer and an Extended Kalman Filter to detect and centre thermals.
+Some discussion is [here](http://diydrones.com/profiles/blogs/ardusoar-cross-country-x-plane-simulation)
+
+Based on Peter Braswell's [Ardusoar code](http://diydrones.com/forum/topics/autonomous-soaring?xg_source=activity)
+
 ### The ArduPilot project is made up of: ###
 >>ArduCopter (or APM:Copter) : [code](https://github.com/diydrones/ardupilot/tree/master/ArduCopter), [wiki](http://copter.ardupilot.com)
 
