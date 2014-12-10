@@ -192,6 +192,8 @@ void SoaringController::init_thermalling()
 void SoaringController::init_cruising()
 {
     _cruise_start_time_ms = hal.scheduler->millis();
+    // Start glide. Will be updated on the next loop.
+    _throttle_suppressed=true;
 }
 
 void SoaringController::update_thermalling(float loiter_radius)
