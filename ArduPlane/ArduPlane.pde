@@ -1558,6 +1558,10 @@ static void update_soaring() {
         soaring_controller.suppress_throttle();
     }
     
+    // If throttle is unsuppressed in FBWB, execute RTL.
+    if (control_mode ==FLY_BY_WIRE_B || soaring_controller.get_throttle_suppressed()) {
+        set_mode(RTL);
+    }
     // Nothing to do if we are in powered flight
     if (!soaring_controller.get_throttle_suppressed() && aparm.throttle_max>0) {
         return;
@@ -1581,7 +1585,12 @@ static void update_soaring() {
 
         if (soaring_controller.check_cruise_criteria()) {
         // Exit as soon as thermal state estimate deteriorates
-        set_mode(previous_mode);
+          if (previous_mode==FLY_BY_WIRE_B) {
+            set_mode(RTL);
+          }
+          else {
+            set_mode(previous_mode);
+          }
         }
         else {
         // still in thermal - need to update the wp location
