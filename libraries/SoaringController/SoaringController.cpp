@@ -1,4 +1,3 @@
-#include <AP_HAL.h>
 #include "SoaringController.h"
 
 extern const AP_HAL::HAL& hal;

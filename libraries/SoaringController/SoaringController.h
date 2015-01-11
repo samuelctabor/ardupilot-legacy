@@ -9,7 +9,7 @@ Provides a layer between the thermal centring algorithm and the main code for ma
 #include <AP_Param.h>
 #include <DataFlash.h>
 #include "MatrixMath.h"
-#include "math.h"
+#include "AP_Math.h"
 #include "ExtendedKalmanFilter.h"
 #include <AP_SpdHgtControl.h>
 #define EXPECTED_THERMALLING_SINK 0.7

@@ -7,9 +7,7 @@ purposes by adapting the equations for the jacobians.
 #ifndef ExtendedKalmanFilter_h
 #define ExtendedKalmanFilter_h
 
-#include "Arduino.h"
 #include "MatrixMath.h"
-#include "math.h"
 
 #define N (4)
 

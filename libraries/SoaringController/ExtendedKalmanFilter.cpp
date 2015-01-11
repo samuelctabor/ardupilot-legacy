@@ -1,7 +1,4 @@
-#include "Arduino.h"
 #include "ExtendedKalmanFilter.h"
-#include "MatrixMath.h"
-#include "math.h"
 
 float ExtendedKalmanFilter::measurementpredandjacobian (float* A)
 {
