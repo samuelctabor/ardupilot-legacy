@@ -131,7 +131,7 @@ start_command(const AP_Mission::Mission_Command& cmd)
 static void exit_mission()
 {
     if (control_mode == AUTO) {
-        gcs_send_text_fmt(PSTR("No commands - setting HOLD"));
+        gcs_send_text_fmt(PSTR("No commands. Can't set AUTO - setting HOLD"));
         set_mode(HOLD);
     }
 }
@@ -308,6 +308,7 @@ static void do_take_picture()
 {
 #if CAMERA == ENABLED
     camera.trigger_pic();
+    gcs_send_message(MSG_CAMERA_FEEDBACK);
     if (should_log(MASK_LOG_CAMERA)) {
         DataFlash.Log_Write_Camera(ahrs, gps, current_loc);
     }

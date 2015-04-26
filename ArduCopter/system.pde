@@ -170,7 +170,7 @@ static void init_ardupilot()
 #if MAVLINK_COMM_NUM_BUFFERS > 2
     if (g.serial2_protocol == SERIAL2_FRSKY_DPORT || 
         g.serial2_protocol == SERIAL2_FRSKY_SPORT) {
-        frsky_telemetry.init(hal.uartD, g.serial2_protocol);
+        frsky_telemetry.init(hal.uartD,  (AP_Frsky_Telem::FrSkyProtocol)g.serial2_protocol.get());
     } else {
         gcs[2].setup_uart(hal.uartD, map_baudrate(g.serial2_baud), 128, 128);
     }
@@ -178,7 +178,6 @@ static void init_ardupilot()
 
     // identify ourselves correctly with the ground station
     mavlink_system.sysid = g.sysid_this_mav;
-    mavlink_system.type = 2; //MAV_QUADROTOR;
 
 #if LOGGING_ENABLED == ENABLED
     DataFlash.Init(log_structure, sizeof(log_structure)/sizeof(log_structure[0]));
@@ -216,6 +215,11 @@ static void init_ardupilot()
 
     if(g.compass_enabled)
         init_compass();
+
+#if OPTFLOW == ENABLED
+    // make optflow available to AHRS
+    ahrs.set_optflow(&optflow);
+#endif
 
     // initialise attitude and position controllers
     attitude_control.set_dt(MAIN_LOOP_SECONDS);
@@ -331,16 +335,48 @@ static void startup_ground(bool force_gyro_cal)
     set_land_complete_maybe(true);
 }
 
-// returns true if the GPS is ok and home position is set
-static bool GPS_ok()
+// position_ok - returns true if the horizontal absolute position is ok and home position is set
+static bool position_ok()
 {
-    if (ap.home_is_set && gps.status() >= AP_GPS::GPS_OK_FIX_3D && 
-        !gps_glitch.glitching() && !failsafe.gps &&
-        !ekf_check_state.bad_compass && !failsafe.ekf) {
-        return true;
-    }else{
+    if (ahrs.have_inertial_nav()) {
+        // return false if ekf failsafe has triggered
+        if (failsafe.ekf) {
+            return false;
+        }
+
+        // with EKF use filter status and ekf check
+        nav_filter_status filt_status = inertial_nav.get_filter_status();
+
+        // if disarmed we accept a predicted horizontal position
+        if (!motors.armed()) {
+            return ((filt_status.flags.horiz_pos_abs || filt_status.flags.pred_horiz_pos_abs));
+        } else {
+            // once armed we require a good absolute position and EKF must not be in const_pos_mode
+            return (filt_status.flags.horiz_pos_abs && !filt_status.flags.const_pos_mode);
+        }
+    } else {
+        // with interial nav use GPS based checks
+        return (ap.home_is_set && gps.status() >= AP_GPS::GPS_OK_FIX_3D &&
+                !gps_glitch.glitching() && !failsafe.gps &&
+                !ekf_check_state.bad_compass && !failsafe.ekf);
+    }
+}
+
+// optflow_position_ok - returns true if optical flow based position estimate is ok
+static bool optflow_position_ok()
+{
+#if OPTFLOW != ENABLED
+    return false;
+#else
+    // return immediately if optflow is not enabled or EKF not used
+    if (!optflow.enabled() || !ahrs.have_inertial_nav()) {
         return false;
     }
+
+    // get filter status from EKF
+    nav_filter_status filt_status = inertial_nav.get_filter_status();
+    return (filt_status.flags.horiz_pos_rel || filt_status.flags.pred_horiz_pos_rel);
+#endif
 }
 
 // update_auto_armed - update status of auto_armed flag
@@ -403,8 +439,7 @@ static void check_usb_mux(void)
 static void telemetry_send(void)
 {
 #if FRSKY_TELEM_ENABLED == ENABLED
-    frsky_telemetry.send_frames((uint8_t)control_mode, 
-                                (AP_Frsky_Telem::FrSkyProtocol)g.serial2_protocol.get());
+    frsky_telemetry.send_frames((uint8_t)control_mode);
 #endif
 }
 

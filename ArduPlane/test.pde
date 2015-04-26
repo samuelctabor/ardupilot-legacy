@@ -550,7 +550,7 @@ test_airspeed(uint8_t argc, const Menu::arg *argv)
         return (0);
     }else{
         print_hit_enter();
-        zero_airspeed();
+        zero_airspeed(false);
         cliSerial->printf_P(PSTR("airspeed: "));
         print_enabled(true);
 
@@ -577,6 +577,7 @@ test_pressure(uint8_t argc, const Menu::arg *argv)
 
     while(1) {
         hal.scheduler->delay(100);
+        barometer.update();
 
         if (!barometer.healthy()) {
             cliSerial->println_P(PSTR("not healthy"));

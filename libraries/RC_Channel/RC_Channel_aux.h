@@ -68,6 +68,7 @@ public:
         k_steering              = 26,            ///< ground steering, used to separate from rudder
         k_parachute_release     = 27,            ///< parachute release
         k_epm                   = 28,            ///< epm gripper
+        k_landing_gear_control  = 29,            ///< landing gear controller
         k_nr_aux_servo_functions         ///< This must be the last enum value (only add new values _before_ this one)
     } Aux_servo_function_t;
 
@@ -81,6 +82,9 @@ public:
 
 	// set radio_out for a function channel
 	static void set_radio(Aux_servo_function_t function, int16_t value);
+
+	// set radio_out for all channels matching the given function type, allow radio_trim to center servo
+	static void set_radio_trimmed(Aux_servo_function_t function, int16_t value);
 
 	// set and save the trim for a function channel to radio_in
 	static void set_radio_trim(Aux_servo_function_t function);

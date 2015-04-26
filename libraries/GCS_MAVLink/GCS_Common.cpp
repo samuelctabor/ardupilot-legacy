@@ -34,7 +34,7 @@ GCS_MAVLINK::GCS_MAVLINK() :
 void
 GCS_MAVLINK::init(AP_HAL::UARTDriver *port)
 {
-    GCS_Class::init(port);
+    _port = port;
     if (port == (AP_HAL::BetterStream*)hal.uartA) {
         mavlink_comm_0_port = port;
         chan = MAVLINK_COMM_0;
@@ -232,11 +232,6 @@ void GCS_MAVLINK::handle_mission_request_list(AP_Mission &mission, mavlink_messa
     mavlink_mission_request_list_t packet;
     mavlink_msg_mission_request_list_decode(msg, &packet);
 
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system, packet.target_component)) {
-        return;
-    }
-
     // reply with number of commands in the mission.  The GCS will then request each command separately
     mavlink_msg_mission_count_send(chan,msg->sysid, msg->compid, mission.num_commands());
 
@@ -255,11 +250,6 @@ void GCS_MAVLINK::handle_mission_request(AP_Mission &mission, mavlink_message_t 
     // decode
     mavlink_mission_request_t packet;
     mavlink_msg_mission_request_decode(msg, &packet);
-
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system, packet.target_component)) {
-        return;
-    }
 
     // retrieve mission from eeprom
     if (!mission.read_cmd_from_storage(packet.seq, cmd)) {
@@ -314,11 +304,6 @@ void GCS_MAVLINK::handle_mission_set_current(AP_Mission &mission, mavlink_messag
     mavlink_mission_set_current_t packet;
     mavlink_msg_mission_set_current_decode(msg, &packet);
 
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system,packet.target_component)) {
-        return;
-    }
-
     // set current command
     if (mission.set_current_cmd(packet.seq)) {
         mavlink_msg_mission_current_send(chan, mission.get_current_nav_cmd().index);
@@ -333,11 +318,6 @@ void GCS_MAVLINK::handle_mission_count(AP_Mission &mission, mavlink_message_t *m
     // decode
     mavlink_mission_count_t packet;
     mavlink_msg_mission_count_decode(msg, &packet);
-
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system,packet.target_component)) {
-        return;
-    }
 
     // start waypoint receiving
     if (packet.count > mission.num_commands_max()) {
@@ -366,11 +346,6 @@ void GCS_MAVLINK::handle_mission_clear_all(AP_Mission &mission, mavlink_message_
     mavlink_mission_clear_all_t packet;
     mavlink_msg_mission_clear_all_decode(msg, &packet);
 
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system, packet.target_component)) {
-        return;
-    }
-
     // clear all waypoints
     if (mission.clear()) {
         // send ack
@@ -389,11 +364,6 @@ void GCS_MAVLINK::handle_mission_write_partial_list(AP_Mission &mission, mavlink
     // decode
     mavlink_mission_write_partial_list_t packet;
     mavlink_msg_mission_write_partial_list_decode(msg, &packet);
-
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system,packet.target_component)) {
-        return;
-    }
 
     // start waypoint receiving
     if ((unsigned)packet.start_index > mission.num_commands() ||
@@ -443,10 +413,6 @@ void GCS_MAVLINK::handle_request_data_stream(mavlink_message_t *msg, bool save)
 {
     mavlink_request_data_stream_t packet;
     mavlink_msg_request_data_stream_decode(msg, &packet);
-
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system, packet.target_component))
-        return;
 
     int16_t freq = 0;     // packet frequency
 
@@ -509,11 +475,6 @@ void GCS_MAVLINK::handle_param_request_list(mavlink_message_t *msg)
     mavlink_param_request_list_t packet;
     mavlink_msg_param_request_list_decode(msg, &packet);
 
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system,packet.target_component)) {
-        return;
-    }
-
 #if CONFIG_HAL_BOARD != HAL_BOARD_APM1 && CONFIG_HAL_BOARD != HAL_BOARD_APM2
     // send system ID if we can
     char sysid[40];
@@ -533,10 +494,6 @@ void GCS_MAVLINK::handle_param_request_read(mavlink_message_t *msg)
     mavlink_param_request_read_t packet;
     mavlink_msg_param_request_read_decode(msg, &packet);
 
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system,packet.target_component)) {
-        return;
-    }
     enum ap_var_type p_type;
     AP_Param *vp;
     char param_name[AP_MAX_NAME_SIZE+1];
@@ -575,11 +532,6 @@ void GCS_MAVLINK::handle_param_set(mavlink_message_t *msg, DataFlash_Class *Data
 
     mavlink_param_set_t packet;
     mavlink_msg_param_set_decode(msg, &packet);
-
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system, packet.target_component)) {
-        return;
-    }
 
     // set parameter
     char key[AP_MAX_NAME_SIZE+1];
@@ -718,11 +670,6 @@ void GCS_MAVLINK::handle_mission_item(mavlink_message_t *msg, AP_Mission &missio
     struct AP_Mission::Mission_Command cmd = {};
 
     mavlink_msg_mission_item_decode(msg, &packet);
-
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system,packet.target_component)) {
-        return;
-    }
 
     // convert mavlink packet to mission command
     if (!AP_Mission::mavlink_to_mission_cmd(packet, cmd)) {
@@ -906,9 +853,15 @@ GCS_MAVLINK::update(void (*run_cli)(AP_HAL::UARTDriver *))
             // we exclude radio packets to make it possible to use the
             // CLI over the radio
             if (msg.msgid != MAVLINK_MSG_ID_RADIO && msg.msgid != MAVLINK_MSG_ID_RADIO_STATUS) {
-                mavlink_active |= (1U<<chan);
+                mavlink_active |= (1U<<(chan-MAVLINK_COMM_0));
             }
-            handleMessage(&msg);
+            // if a snoop handler has been setup then use it
+            if (msg_snoop != NULL) {
+                msg_snoop(&msg);
+            }
+            if (routing.check_and_forward(chan, &msg)) {
+                handleMessage(&msg);
+            }
         }
     }
 
@@ -1017,7 +970,6 @@ void GCS_MAVLINK::send_radio_in(uint8_t receiver_rssi)
         values[7],
         receiver_rssi);
 
-#if HAL_CPU_CLASS > HAL_CPU_CLASS_16
     if (hal.rcin->num_channels() > 8 && 
         comm_get_txspace(chan) >= MAVLINK_MSG_ID_RC_CHANNELS_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) {
         mavlink_msg_rc_channels_send(
@@ -1044,7 +996,6 @@ void GCS_MAVLINK::send_radio_in(uint8_t receiver_rssi)
             hal.rcin->read(CH_18),
             receiver_rssi);        
     }
-#endif
 }
 
 void GCS_MAVLINK::send_raw_imu(const AP_InertialSensor &ins, const Compass &compass)
@@ -1091,13 +1042,25 @@ void GCS_MAVLINK::send_raw_imu(const AP_InertialSensor &ins, const Compass &comp
 
 void GCS_MAVLINK::send_scaled_pressure(AP_Baro &barometer)
 {
-    float pressure = barometer.get_pressure();
+    uint32_t now = hal.scheduler->millis();
+    float pressure = barometer.get_pressure(0);
     mavlink_msg_scaled_pressure_send(
         chan,
-        hal.scheduler->millis(),
+        now,
         pressure*0.01f, // hectopascal
-        (pressure - barometer.get_ground_pressure())*0.01f, // hectopascal
-        barometer.get_temperature()*100); // 0.01 degrees C
+        (pressure - barometer.get_ground_pressure(0))*0.01f, // hectopascal
+        barometer.get_temperature(0)*100); // 0.01 degrees C
+#if BARO_MAX_INSTANCES > 1
+    if (barometer.num_instances() > 1) {
+        pressure = barometer.get_pressure(1);
+        mavlink_msg_scaled_pressure2_send(
+            chan,
+            now,
+            pressure*0.01f, // hectopascal
+            (pressure - barometer.get_ground_pressure(1))*0.01f, // hectopascal
+            barometer.get_temperature(1)*100); // 0.01 degrees C        
+    }
+#endif
 }
 
 void GCS_MAVLINK::send_sensor_offsets(const AP_InertialSensor &ins, const Compass &compass, AP_Baro &barometer)
@@ -1150,7 +1113,7 @@ void GCS_MAVLINK::send_statustext_all(const prog_char_t *msg)
 {
     for (uint8_t i=0; i<MAVLINK_COMM_NUM_BUFFERS; i++) {
         if ((1U<<i) & mavlink_active) {
-            mavlink_channel_t chan = (mavlink_channel_t)i;
+            mavlink_channel_t chan = (mavlink_channel_t)(MAVLINK_COMM_0+i);
             if (comm_get_txspace(chan) >= MAVLINK_NUM_NON_PAYLOAD_BYTES + MAVLINK_MSG_ID_STATUSTEXT_LEN) {
                 char msg2[50];
                 strncpy_P(msg2, msg, sizeof(msg2));
@@ -1165,9 +1128,8 @@ void GCS_MAVLINK::send_statustext_all(const prog_char_t *msg)
 // report battery2 state
 void GCS_MAVLINK::send_battery2(const AP_BattMonitor &battery)
 {
-    float voltage;
-    if (battery.voltage2(voltage)) {
-        mavlink_msg_battery2_send(chan, voltage*1000, -1);
+    if (battery.num_instances() > 1) {
+        mavlink_msg_battery2_send(chan, battery.voltage2()*1000, -1);
     }
 }
 
@@ -1179,11 +1141,6 @@ void GCS_MAVLINK::handle_set_mode(mavlink_message_t* msg, bool (*set_mode)(uint8
     uint8_t result = MAV_RESULT_FAILED;
     mavlink_set_mode_t packet;
     mavlink_msg_set_mode_decode(msg, &packet);
-
-    // exit immediately if this command is not meant for this vehicle
-    if (mavlink_check_target(packet.target_system, 0)) {
-        return;
-    }
 
     // only accept custom modes because there is no easy mapping from Mavlink flight modes to AC flight modes
     if (packet.base_mode & MAV_MODE_FLAG_CUSTOM_MODE_ENABLED) {
@@ -1207,3 +1164,37 @@ void GCS_MAVLINK::handle_set_mode(mavlink_message_t* msg, bool (*set_mode)(uint8
     // send ACK or NAK
     mavlink_msg_command_ack_send_buf(msg, chan, MAVLINK_MSG_ID_SET_MODE, result);
 }
+
+#if AP_AHRS_NAVEKF_AVAILABLE
+/*
+  send OPTICAL_FLOW message
+ */
+void GCS_MAVLINK::send_opticalflow(AP_AHRS_NavEKF &ahrs, const OpticalFlow &optflow)
+{
+    // exit immediately if no optical flow sensor or not healthy
+    if (!optflow.healthy()) {
+        return;
+    }
+
+    // get rates from sensor
+    const Vector2f &flowRate = optflow.flowRate();
+    const Vector2f &bodyRate = optflow.bodyRate();
+    float hagl = 0;
+
+    if (ahrs.have_inertial_nav()) {
+        ahrs.get_NavEKF().getHAGL(hagl);
+    }
+
+    // populate and send message
+    mavlink_msg_optical_flow_send(
+        chan,
+        hal.scheduler->millis(),
+        0, // sensor id is zero
+        flowRate.x,
+        flowRate.y,
+        bodyRate.x,
+        bodyRate.y,
+        optflow.quality(),
+        hagl); // ground distance (in meters) set to zero
+}
+#endif

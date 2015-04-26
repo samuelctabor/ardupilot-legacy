@@ -460,6 +460,7 @@ bool AP_Mission::mavlink_to_mission_cmd(const mavlink_mission_item_t& packet, AP
     // command's position in mission list and mavlink id
     cmd.index = packet.seq;
     cmd.id = packet.command;
+    cmd.content.location.options = 0;
 
     // command specific conversions from mavlink packet to mission command
     switch (cmd.id) {
@@ -510,6 +511,10 @@ bool AP_Mission::mavlink_to_mission_cmd(const mavlink_mission_item_t& packet, AP
     case MAV_CMD_NAV_TAKEOFF:                           // MAV ID: 22
         copy_location = true;                           // only altitude is used
         cmd.p1 = packet.param1;                         // minimum pitch (plane only)
+        break;
+
+    case MAV_CMD_NAV_CONTINUE_AND_CHANGE_ALT:           // MAV ID: 30
+        copy_location = true;                           // only using alt
         break;
 
     case MAV_CMD_NAV_SPLINE_WAYPOINT:                   // MAV ID: 82
@@ -605,6 +610,10 @@ bool AP_Mission::mavlink_to_mission_cmd(const mavlink_mission_item_t& packet, AP
 
     case MAV_CMD_DO_SET_CAM_TRIGG_DIST:                 // MAV ID: 206
         cmd.content.cam_trigg_dist.meters = packet.param1;  // distance between camera shots in meters
+        break;
+
+    case MAV_CMD_DO_FENCE_ENABLE:                       // MAV ID: 207
+        cmd.p1 = packet.param1;                         // action 0=disable, 1=enable
         break;
 
     case MAV_CMD_DO_PARACHUTE:                         // MAV ID: 208
@@ -777,6 +786,10 @@ bool AP_Mission::mission_cmd_to_mavlink(const AP_Mission::Mission_Command& cmd, 
         packet.param1 = cmd.p1;                         // minimum pitch (plane only)
         break;
 
+    case MAV_CMD_NAV_CONTINUE_AND_CHANGE_ALT:           // MAV ID: 30
+        copy_location = true;                           //only using alt.
+        break;
+
     case MAV_CMD_NAV_SPLINE_WAYPOINT:                   // MAV ID: 82
         copy_location = true;
         packet.param1 = cmd.p1;                         // delay at waypoint in seconds
@@ -870,6 +883,10 @@ bool AP_Mission::mission_cmd_to_mavlink(const AP_Mission::Mission_Command& cmd, 
 
     case MAV_CMD_DO_SET_CAM_TRIGG_DIST:                 // MAV ID: 206
         packet.param1 = cmd.content.cam_trigg_dist.meters;  // distance between camera shots in meters
+        break;
+
+    case MAV_CMD_DO_FENCE_ENABLE:                       // MAV ID: 207
+        packet.param1 = cmd.p1;                         // action 0=disable, 1=enable
         break;
 
     case MAV_CMD_DO_PARACHUTE:                          // MAV ID: 208
@@ -1066,6 +1083,7 @@ bool AP_Mission::get_next_cmd(uint16_t start_index, Mission_Command& cmd, bool i
     uint16_t jump_index = AP_MISSION_CMD_INDEX_NONE;
 
     // search until the end of the mission command list
+    uint8_t max_loops = 64;
     while(cmd_index < (unsigned)_cmd_total) {
         // load the next command
         if (!read_cmd_from_storage(cmd_index, temp_cmd)) {
@@ -1075,6 +1093,10 @@ bool AP_Mission::get_next_cmd(uint16_t start_index, Mission_Command& cmd, bool i
 
         // check for do-jump command
         if (temp_cmd.id == MAV_CMD_DO_JUMP) {
+
+            if (max_loops-- == 0) {
+                return false;
+            }
 
             // check for invalid target
             if (temp_cmd.content.jump.target >= (unsigned)_cmd_total) {

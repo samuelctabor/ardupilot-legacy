@@ -82,7 +82,7 @@ const AP_Param::Info var_info[] PROGMEM = {
     // @Param: SERIAL2_PROTOCOL
     // @DisplayName: SERIAL2 protocol selection
     // @Description: Control what protocol telemetry 2 port should be used for
-    // @Values: 1:GCS Mavlink,2:Frsky D-PORT
+    // @Values: 1:GCS Mavlink,2:Frsky D-PORT,3:Frsky S-PORT
     // @User: Standard
     GSCALAR(serial2_protocol,        "SERIAL2_PROTOCOL", SERIAL2_MAVLINK),
 #endif // FRSKY_TELEM_ENABLED
@@ -525,7 +525,7 @@ const AP_Param::Info var_info[] PROGMEM = {
 
     // @Group: BATT_
     // @Path: ../libraries/AP_BattMonitor/AP_BattMonitor.cpp
-    GOBJECT(battery,                "BATT_",       AP_BattMonitor),
+    GOBJECT(battery,                "BATT", AP_BattMonitor),
 
     // @Group: BRD_
     // @Path: ../libraries/AP_BoardConfig/AP_BoardConfig.cpp

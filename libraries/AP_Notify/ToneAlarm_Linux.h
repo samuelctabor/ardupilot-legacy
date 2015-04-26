@@ -18,9 +18,9 @@
 #ifndef __TONE_ALARM_Linux_H__
 #define __TONE_ALARM_Linux_H__
 
-#include "ToneAlarm_Linux.h"
+#include "NotifyDevice.h"
 
-class ToneAlarm_Linux
+class ToneAlarm_Linux: public NotifyDevice
 {
 public:
     ToneAlarm_Linux():
@@ -36,7 +36,7 @@ private:
     /// play_tune - play one of the pre-defined tunes
     bool play_tune(uint8_t tune_number);
 
-    int err;
+    bool err;
 
     /// tonealarm_type - bitmask of states we track
     struct tonealarm_type {

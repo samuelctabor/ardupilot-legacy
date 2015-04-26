@@ -144,6 +144,11 @@ static NOINLINE void send_extended_status1(mavlink_channel_t chan)
     if (gps.status() > AP_GPS::NO_GPS) {
         control_sensors_present |= MAV_SYS_STATUS_SENSOR_GPS;
     }
+#if OPTFLOW == ENABLED
+    if (optflow.enabled()) {
+        control_sensors_present |= MAV_SYS_STATUS_SENSOR_OPTICAL_FLOW;
+    }
+#endif
     if (geofence_present()) {
         control_sensors_present |= MAV_SYS_STATUS_GEOFENCE;
     }
@@ -219,7 +224,12 @@ static NOINLINE void send_extended_status1(mavlink_channel_t chan)
         // AHRS subsystem is unhealthy
         control_sensors_health &= ~MAV_SYS_STATUS_AHRS;
     }
-    if (barometer.healthy()) {
+    if (ahrs.have_inertial_nav() && !ins.calibrated()) {
+        // trying to use EKF without properly calibrated accelerometers
+        control_sensors_health &= ~MAV_SYS_STATUS_AHRS;
+    }
+
+    if (barometer.all_healthy()) {
         control_sensors_health |= MAV_SYS_STATUS_SENSOR_ABSOLUTE_PRESSURE;
     }
     if (g.compass_enabled && compass.healthy(0) && ahrs.use_compass()) {
@@ -228,6 +238,11 @@ static NOINLINE void send_extended_status1(mavlink_channel_t chan)
     if (gps.status() >= AP_GPS::GPS_OK_FIX_3D) {
         control_sensors_health |= MAV_SYS_STATUS_SENSOR_GPS;
     }
+#if OPTFLOW == ENABLED
+    if (optflow.healthy()) {
+        control_sensors_health |= MAV_SYS_STATUS_SENSOR_OPTICAL_FLOW;
+    }
+#endif
     if (!ins.get_gyro_health_all() || (!g.skip_gyro_cal && !ins.gyro_calibrated_ok_all())) {
         control_sensors_health &= ~MAV_SYS_STATUS_SENSOR_3D_GYRO;
     }
@@ -244,7 +259,7 @@ static NOINLINE void send_extended_status1(mavlink_channel_t chan)
     int16_t battery_current = -1;
     int8_t battery_remaining = -1;
 
-    if (battery.monitoring() == AP_BATT_MONITOR_VOLTAGE_AND_CURRENT) {
+    if (battery.has_current()) {
         battery_remaining = battery.capacity_remaining_pct();
         battery_current = battery.current_amps() * 100;
     }
@@ -264,6 +279,16 @@ static NOINLINE void send_extended_status1(mavlink_channel_t chan)
         break;
     }
 #endif
+
+    if (rangefinder.num_sensors() > 0) {
+        control_sensors_present |= MAV_SYS_STATUS_SENSOR_LASER_POSITION;
+        if (g.rangefinder_landing) {
+            control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_LASER_POSITION;
+        }
+        if (rangefinder.healthy()) {
+            control_sensors_health |= MAV_SYS_STATUS_SENSOR_LASER_POSITION;            
+        }
+    }
 
     mavlink_msg_sys_status_send(
         chan,
@@ -314,7 +339,7 @@ static void NOINLINE send_nav_controller_output(mavlink_channel_t chan)
         nav_pitch_cd * 0.01,
         nav_controller->nav_bearing_cd() * 0.01f,
         nav_controller->target_bearing_cd() * 0.01f,
-        wp_distance,
+        auto_state.wp_distance,
         altitude_error_cm * 0.01,
         airspeed_error_cm,
         nav_controller->crosstrack_error());
@@ -661,6 +686,20 @@ bool GCS_MAVLINK::try_send_message(enum ap_message id)
         send_wind(chan);
         break;
 
+    case MSG_MOUNT_STATUS:
+#if MOUNT == ENABLED
+        CHECK_PAYLOAD_SIZE(MOUNT_STATUS);
+        camera_mount.status_msg(chan);
+#endif // MOUNT == ENABLED
+        break;
+
+    case MSG_OPTICAL_FLOW:
+#if OPTFLOW == ENABLED
+        CHECK_PAYLOAD_SIZE(OPTICAL_FLOW);
+        gcs[chan-MAVLINK_COMM_0].send_opticalflow(ahrs, optflow);
+#endif
+        break;
+
     case MSG_RETRY_DEFERRED:
         break; // just here to prevent a warning
 
@@ -893,6 +932,8 @@ GCS_MAVLINK::data_stream_send(void)
         send_message(MSG_TERRAIN);
 #endif
         send_message(MSG_BATTERY2);
+        send_message(MSG_MOUNT_STATUS);
+        send_message(MSG_OPTICAL_FLOW);
     }
 }
 
@@ -928,6 +969,8 @@ void GCS_MAVLINK::handle_change_alt_request(AP_Mission::Mission_Command &cmd)
         next_WP_loc.alt += home.alt;
     }
     next_WP_loc.flags.relative_alt = false;
+    next_WP_loc.flags.terrain_alt = cmd.content.location.flags.terrain_alt;
+    reset_offset_altitude();
 }
 
 
@@ -946,7 +989,6 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
         // decode
         mavlink_command_long_t packet;
         mavlink_msg_command_long_decode(msg, &packet);
-        if (mavlink_check_target(packet.target_system, packet.target_component)) break;
 
         uint8_t result = MAV_RESULT_UNSUPPORTED;
 
@@ -991,30 +1033,35 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
             break;
 
         case MAV_CMD_PREFLIGHT_CALIBRATION:
-            if (packet.param1 == 1 ||
-                packet.param2 == 1) {
-                startup_INS_ground(true);
-            } else if (packet.param3 == 1) {
+            if (packet.param3 == 1) {
                 in_calibration = true;
                 init_barometer();
                 if (airspeed.enabled()) {
-                    zero_airspeed();
+                    zero_airspeed(false);
                 }
                 in_calibration = false;
-            }
-            if (packet.param4 == 1) {
+            } else if (packet.param1 == 1 ||
+                       packet.param2 == 1) {
+                startup_INS_ground(true);
+            } else if (packet.param4 == 1) {
                 trim_radio();
-            }
-#if !defined( __AVR_ATmega1280__ )
-            if (packet.param5 == 1) {
+            } 
+            else if (packet.param5 == 1) {
                 float trim_roll, trim_pitch;
                 AP_InertialSensor_UserInteract_MAVLink interact(chan);
+                if (g.skip_gyro_cal) {
+                    // start with gyro calibration, otherwise if the user
+                    // has SKIP_GYRO_CAL=1 they don't get to do it
+                    ins.init_gyro();
+                }
                 if(ins.calibrate_accel(&interact, trim_roll, trim_pitch)) {
                     // reset ahrs's trim to suggested values from calibration routine
                     ahrs.set_trim(Vector3f(trim_roll, trim_pitch, 0));
                 }
             }
-#endif
+            else {
+                    send_text_P(SEVERITY_LOW, PSTR("Unsupported preflight calibration"));
+            }
             result = MAV_RESULT_ACCEPTED;
             break;
 
@@ -1036,7 +1083,7 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
                 // run pre_arm_checks and arm_checks and display failures
                 if (arming.arm(AP_Arming::MAVLINK)) {
                     //only log if arming was successful
-                    channel_throttle->enable_out();                        
+                    channel_throttle->enable_out();
                     Log_Arm_Disarm();
                     result = MAV_RESULT_ACCEPTED;
                 } else {
@@ -1047,8 +1094,14 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
                     if (arming.arming_required() == AP_Arming::YES_ZERO_PWM) {
                         channel_throttle->disable_out();  
                     }
-                    // reset the mission on disarm
-                    mission.stop();
+                    if (control_mode != AUTO) {
+                        // reset the mission on disarm if we are not in auto
+                        mission.reset();
+                    }
+
+                    // suppress the throttle in auto-throttle modes
+                    throttle_suppressed = auto_throttle_mode;
+
                     //only log if disarming was successful
                     Log_Arm_Disarm();
                     result = MAV_RESULT_ACCEPTED;
@@ -1270,8 +1323,6 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
     case MAVLINK_MSG_ID_FENCE_POINT: {
         mavlink_fence_point_t packet;
         mavlink_msg_fence_point_decode(msg, &packet);
-        if (mavlink_check_target(packet.target_system, packet.target_component))
-            break;
         if (g.fence_action != FENCE_ACTION_NONE) {
             send_text_P(SEVERITY_LOW,PSTR("fencing must be disabled"));
         } else if (packet.count != g.fence_total) {
@@ -1289,8 +1340,6 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
     case MAVLINK_MSG_ID_FENCE_FETCH_POINT: {
         mavlink_fence_fetch_point_t packet;
         mavlink_msg_fence_fetch_point_decode(msg, &packet);
-        if (mavlink_check_target(packet.target_system, packet.target_component))
-            break;
         if (packet.idx >= g.fence_total) {
             send_text_P(SEVERITY_LOW,PSTR("bad fence point"));
         } else {
@@ -1306,8 +1355,6 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
     case MAVLINK_MSG_ID_RALLY_POINT: {
         mavlink_rally_point_t packet;
         mavlink_msg_rally_point_decode(msg, &packet);
-        if (mavlink_check_target(packet.target_system, packet.target_component))
-            break;
         
         if (packet.idx >= rally.get_rally_total() || 
             packet.idx >= rally.get_rally_max()) {
@@ -1335,8 +1382,6 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
     case MAVLINK_MSG_ID_RALLY_FETCH_POINT: {
         mavlink_rally_fetch_point_t packet;
         mavlink_msg_rally_fetch_point_decode(msg, &packet);
-        if (mavlink_check_target(packet.target_system, packet.target_component))
-            break;
         if (packet.idx > rally.get_rally_total()) {
             send_text_P(SEVERITY_LOW, PSTR("bad rally point index"));   
             break;
@@ -1370,10 +1415,6 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
         mavlink_rc_channels_override_t packet;
         int16_t v[8];
         mavlink_msg_rc_channels_override_decode(msg, &packet);
-
-        // exit immediately if this command is not meant for this vehicle
-        if (mavlink_check_target(packet.target_system,packet.target_component))
-            break;
 
         v[0] = packet.chan1_raw;
         v[1] = packet.chan2_raw;
@@ -1486,12 +1527,6 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
         camera_mount.control_msg(msg);
         break;
     }
-
-    case MAVLINK_MSG_ID_MOUNT_STATUS:
-    {
-        camera_mount.status_msg(msg, chan);
-        break;
-    }
 #endif // MOUNT == ENABLED
 
     case MAVLINK_MSG_ID_RADIO:
@@ -1530,19 +1565,6 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
 #endif
         break;
         
-    default:
-        // forward unknown messages to the other link if there is one
-        for (uint8_t i=0; i<num_gcs; i++) {
-            if (gcs[i].initialised && i != (uint8_t)chan) {
-                mavlink_channel_t out_chan = (mavlink_channel_t)i;
-                // only forward if it would fit in the transmit buffer
-                if (comm_get_txspace(out_chan) > ((uint16_t)msg->len) + MAVLINK_NUM_NON_PAYLOAD_BYTES) {
-                    _mavlink_resend_uart(out_chan, msg);
-                }
-            }
-        }
-        break;
-
     } // end switch
 } // end handle mavlink
 

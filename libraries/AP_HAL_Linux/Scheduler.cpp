@@ -7,6 +7,7 @@
 #include "RCInput.h"
 #include "UARTDriver.h"
 #include "Util.h"
+#include "SPIUARTDriver.h"
 #include <sys/time.h>
 #include <poll.h>
 #include <unistd.h>
@@ -159,6 +160,10 @@ uint32_t LinuxScheduler::micros()
 
 void LinuxScheduler::delay_microseconds(uint16_t us)
 {
+    if (stopped_clock_usec) {
+        stopped_clock_usec += us;
+        return;
+    }
     _microsleep(us);
 }
 
@@ -272,10 +277,9 @@ void *LinuxScheduler::_timer_thread(void)
 
 void LinuxScheduler::_run_io(void)
 {
-    if (_in_io_proc) {
+    if (!_io_semaphore.take(0)) {
         return;
     }
-    _in_io_proc = true;
 
     // now call the IO based drivers
     for (int i = 0; i < _num_io_procs; i++) {
@@ -284,7 +288,7 @@ void LinuxScheduler::_run_io(void)
         }
     }
 
-    _in_io_proc = false;
+    _io_semaphore.give();
 }
 
 void *LinuxScheduler::_rcin_thread(void)
@@ -325,7 +329,7 @@ void *LinuxScheduler::_tonealarm_thread(void)
         poll(NULL, 0, 1);        
     }
     while (true) {
-        _microsleep(20000);
+        _microsleep(10000);
 
         // process tone command
         ((LinuxUtil *)hal.util)->_toneAlarm_timer_tick();
@@ -384,12 +388,13 @@ void LinuxScheduler::system_initialized()
 
 void LinuxScheduler::reboot(bool hold_in_bootloader) 
 {
-    for(;;);
+    exit(1);
 }
 
 void LinuxScheduler::stop_clock(uint64_t time_usec)
 {
     stopped_clock_usec = time_usec;
+    _run_io();
 }
 
 #endif // CONFIG_HAL_BOARD

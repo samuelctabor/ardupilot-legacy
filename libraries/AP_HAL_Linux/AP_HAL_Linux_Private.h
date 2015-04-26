@@ -7,6 +7,7 @@
  */
 
 #include "UARTDriver.h"
+#include "SPIUARTDriver.h"
 #include "I2CDriver.h"
 #include "SPIDriver.h"
 #include "AnalogIn.h"
@@ -16,8 +17,10 @@
 #include "RCInput_Navio.h"
 #include "RCOutput_PRU.h"
 #include "RCOutput_Navio.h"
+#include "RCOutput_ZYNQ.h"
 #include "Semaphores.h"
 #include "Scheduler.h"
+#include "ToneAlarmDriver.h"
 #include "Util.h"
 
 #endif // __AP_HAL_LINUX_PRIVATE_H__

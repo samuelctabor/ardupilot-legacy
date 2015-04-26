@@ -8,6 +8,12 @@
  # define GUIDED_LOOK_AT_TARGET_MIN_DISTANCE_CM     500     // point nose at target if it is more than 5m away
 #endif
 
+#define GUIDED_POSVEL_TIMEOUT_MS    3000    // guided mode's position-velocity controller times out after 3seconds with no new updates
+
+static Vector3f posvel_pos_target_cm;
+static Vector3f posvel_vel_target_cms;
+static uint32_t posvel_update_time_ms;
+
 struct Guided_Limit {
     uint32_t timeout_ms;  // timeout (in seconds) from the time that guided is invoked
     float alt_min_cm;   // lower altitude limit in cm above home (0 = no limit)
@@ -20,7 +26,7 @@ struct Guided_Limit {
 // guided_init - initialise guided controller
 static bool guided_init(bool ignore_checks)
 {
-    if (GPS_ok() || ignore_checks) {
+    if (position_ok() || ignore_checks) {
         // initialise yaw
         set_auto_yaw_mode(get_default_auto_yaw_mode(false));
         // start in position control mode
@@ -50,7 +56,7 @@ static void guided_takeoff_start(float final_alt)
 }
 
 // initialise guided mode's position controller
-void guided_pos_control_start()
+static void guided_pos_control_start()
 {
     // set to position control mode
     guided_mode = Guided_WP;
@@ -71,7 +77,7 @@ void guided_pos_control_start()
 }
 
 // initialise guided mode's velocity controller
-void guided_vel_control_start()
+static void guided_vel_control_start()
 {
     // set guided_mode to velocity controller
     guided_mode = Guided_Velocity;
@@ -82,6 +88,33 @@ void guided_vel_control_start()
 
     // initialise velocity controller
     pos_control.init_vel_controller_xyz();
+}
+
+// initialise guided mode's posvel controller
+static void guided_posvel_control_start()
+{
+    // set guided_mode to velocity controller
+    guided_mode = Guided_PosVel;
+
+    pos_control.init_xy_controller();
+
+    // set speed and acceleration from wpnav's speed and acceleration
+    pos_control.set_speed_xy(wp_nav.get_speed_xy());
+    pos_control.set_accel_xy(wp_nav.get_wp_acceleration());
+
+    const Vector3f& curr_pos = inertial_nav.get_position();
+    const Vector3f& curr_vel = inertial_nav.get_velocity();
+
+    // set target position and velocity to current position and velocity
+    pos_control.set_xy_target(curr_pos.x, curr_pos.y);
+    pos_control.set_desired_velocity_xy(curr_vel.x, curr_vel.y);
+
+    // set vertical speed and acceleration
+    pos_control.set_speed_z(wp_nav.get_speed_down(), wp_nav.get_speed_up());
+    pos_control.set_accel_z(wp_nav.get_accel_z());
+
+    // pilot always controls yaw
+    set_auto_yaw_mode(AUTO_YAW_HOLD);
 }
 
 // guided_set_destination - sets guided mode's target destination
@@ -105,6 +138,20 @@ static void guided_set_velocity(const Vector3f& velocity)
 
     // set position controller velocity target
     pos_control.set_desired_velocity(velocity);
+}
+
+// set guided mode posvel target
+static void guided_set_destination_posvel(const Vector3f& destination, const Vector3f& velocity) {
+    // check we are in velocity control mode
+    if (guided_mode != Guided_PosVel) {
+        guided_posvel_control_start();
+    }
+
+    posvel_update_time_ms = millis();
+    posvel_pos_target_cm = destination;
+    posvel_vel_target_cms = velocity;
+
+    pos_control.set_pos_target(posvel_pos_target_cm);
 }
 
 // guided_run - runs the guided controller
@@ -137,6 +184,12 @@ static void guided_run()
     case Guided_Velocity:
         // run velocity controller
         guided_vel_control_run();
+        break;
+
+    case Guided_PosVel:
+        // run position-velocity controller
+        guided_posvel_control_run();
+        break;
     }
  }
 
@@ -219,7 +272,49 @@ static void guided_vel_control_run()
     }
 
     // call velocity controller which includes z axis controller
-    pos_control.update_vel_controller_xyz();
+    pos_control.update_vel_controller_xyz(ekfNavVelGainScaler);
+
+    // call attitude controller
+    if (auto_yaw_mode == AUTO_YAW_HOLD) {
+        // roll & pitch from waypoint controller, yaw rate from pilot
+        attitude_control.angle_ef_roll_pitch_rate_ef_yaw(pos_control.get_roll(), pos_control.get_pitch(), target_yaw_rate);
+    }else{
+        // roll, pitch from waypoint controller, yaw heading from auto_heading()
+        attitude_control.angle_ef_roll_pitch_yaw(pos_control.get_roll(), pos_control.get_pitch(), get_auto_heading(), true);
+    }
+}
+
+// guided_posvel_control_run - runs the guided spline controller
+// called from guided_run
+static void guided_posvel_control_run()
+{
+    // process pilot's yaw input
+    float target_yaw_rate = 0;
+
+    if (!failsafe.radio) {
+        // get pilot's desired yaw rate
+        target_yaw_rate = get_pilot_desired_yaw_rate(g.rc_4.control_in);
+        if (target_yaw_rate != 0) {
+            set_auto_yaw_mode(AUTO_YAW_HOLD);
+        }
+    }
+
+    // set velocity to zero if no updates received for 3 seconds
+    uint32_t tnow = millis();
+    if (tnow - posvel_update_time_ms > GUIDED_POSVEL_TIMEOUT_MS && !posvel_vel_target_cms.is_zero()) {
+        posvel_vel_target_cms.zero();
+    }
+
+    // advance position target using velocity target
+    posvel_pos_target_cm += posvel_vel_target_cms * G_Dt;
+
+    // send position and velocity targets to position controller
+    pos_control.set_pos_target(posvel_pos_target_cm);
+    pos_control.set_desired_velocity_xy(posvel_vel_target_cms.x, posvel_vel_target_cms.y);
+
+    // run position controller
+    pos_control.update_xy_controller(true, ekfNavVelGainScaler);
+    pos_control.update_z_controller();
 
     // call attitude controller
     if (auto_yaw_mode == AUTO_YAW_HOLD) {

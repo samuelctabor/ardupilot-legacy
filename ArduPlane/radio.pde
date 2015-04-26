@@ -22,6 +22,10 @@ static void set_control_channels(void)
     if (!arming.is_armed() && arming.arming_required() == AP_Arming::YES_MIN_PWM) {
         hal.rcout->set_safety_pwm(1UL<<(rcmap.throttle()-1), channel_throttle->radio_min);
     }
+
+    // setup correct scaling for ESCs like the UAVCAN PX4ESC which
+    // take a proportion of speed
+    hal.rcout->set_esc_scaling(channel_throttle->radio_min, channel_throttle->radio_max);
 }
 
 /*
@@ -85,7 +89,7 @@ static void rudder_arm_check()
     }
 
     //if throttle is not down, then pilot cannot rudder arm
-    if (g.rc_3.control_in > 0) {
+    if (channel_throttle->control_in > 0) {
         rudder_arm_timer = 0;
         return;
     }
@@ -97,7 +101,7 @@ static void rudder_arm_check()
     }
 
     // full right rudder starts arming counter
-    if (g.rc_4.control_in > 4000) {
+    if (channel_rudder->control_in > 4000) {
         uint32_t now = millis();
 
         if (rudder_arm_timer == 0 || 
@@ -159,7 +163,7 @@ static void read_radio()
 
     if (g.throttle_nudge && channel_throttle->servo_out > 50) {
         float nudge = (channel_throttle->servo_out - 50) * 0.02f;
-        if (airspeed.use()) {
+        if (ahrs.airspeed_sensor_enabled()) {
             airspeed_nudge_cm = (aparm.airspeed_max * 100 - g.airspeed_cruise_cm) * nudge;
         } else {
             throttle_nudge = (aparm.throttle_max - aparm.throttle_cruise) * nudge;
@@ -193,18 +197,7 @@ static void control_failsafe(uint16_t pwm)
     if(g.throttle_fs_enabled == 0)
         return;
 
-    // Check for failsafe condition based on loss of GCS control
-    if (failsafe.rc_override_active) {
-        if (millis() - failsafe.last_heartbeat_ms > g.short_fs_timeout*1000) {
-            failsafe.ch3_failsafe = true;
-            AP_Notify::flags.failsafe_radio = true;
-        } else {
-            failsafe.ch3_failsafe = false;
-            AP_Notify::flags.failsafe_radio = false;
-        }
-
-        //Check for failsafe and debounce funky reads
-    } else if (g.throttle_fs_enabled) {
+    if (g.throttle_fs_enabled) {
         if (rc_failsafe_active()) {
             // we detect a failsafe from radio
             // throttle has dropped below the mark
