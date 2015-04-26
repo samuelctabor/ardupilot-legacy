@@ -150,6 +150,11 @@ bool SoaringController::get_throttle_suppressed()
     return _throttle_suppressed;
 }
 
+void SoaringController::set_throttle_suppressed(bool suppressed)
+{
+    _throttle_suppressed = suppressed;
+}
+
 bool SoaringController::check_thermal_criteria()
 {
     return(soar_active && (( hal.scheduler->millis() - _cruise_start_time_ms ) > ((unsigned)min_cruise_s*1000)) && _filtered_vario_reading > thermal_vspeed && _alt < alt_max && _alt>alt_min);
