@@ -451,8 +451,7 @@ static const struct LogStructure log_structure[] PROGMEM = {
     THML_LOG_FORMAT(LOG_THERMAL_MSG),
     { LOG_ATRP_MSG, sizeof(AP_AutoTune::log_ATRP),
       "ATRP", "IBBcfff",  "TimeMS,Type,State,Servo,Demanded,Achieved,P" },
-    TECS_LOG_FORMAT(LOG_TECS_MSG),
-    VARIO_LOG_FORMAT(LOG_VARIO_MSG)
+    VARIO_LOG_FORMAT(LOG_VARIO_MSG),
     { LOG_ATRP_MSG, sizeof(AP_AutoTune::log_ATRP),
       "ATRP", "IBBcfff",  "TimeMS,Type,State,Servo,Demanded,Achieved,P" },
 #if OPTFLOW == ENABLED
