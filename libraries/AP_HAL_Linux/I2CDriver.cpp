@@ -1,30 +1,96 @@
-
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 #include "I2CDriver.h"
+#include "Util.h"
 
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <limits.h>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
 #ifndef I2C_SMBUS_BLOCK_MAX
 #include <linux/i2c.h>
 #endif
 
+extern const AP_HAL::HAL& hal;
+
 using namespace Linux;
 
 /*
   constructor
  */
-LinuxI2CDriver::LinuxI2CDriver(AP_HAL::Semaphore* semaphore, const char *device) : 
-    _semaphore(semaphore),
-    _fd(-1),
-    _device(device)
+LinuxI2CDriver::LinuxI2CDriver(AP_HAL::Semaphore* semaphore, const char *device) :
+    _semaphore(semaphore)
 {
+    _device = strdup(device);
+
+#if CONFIG_HAL_BOARD_SUBTYPE != HAL_BOARD_SUBTYPE_LINUX_NONE
+    if (!((LinuxUtil*)hal.util)->is_chardev_node(_device))
+        hal.scheduler->panic("I2C device is not a chardev node");
+#endif
+}
+
+/* Match a given device by the prefix its devpath, i.e. the path returned by
+ * udevadm info -q path /dev/<i2c-device>'. This constructor can be used when
+ * the number of the I2C bus is not stable across reboots. It matches the
+ * first device with a prefix in @devpaths */
+LinuxI2CDriver::LinuxI2CDriver(AP_HAL::Semaphore* semaphore,
+                               const char * const devpaths[]) :
+    _semaphore(semaphore)
+{
+    const char *dirname = "/sys/class/i2c-dev";
+    struct dirent *de;
+    DIR *d;
+
+    d = opendir(dirname);
+    if (!d)
+        hal.scheduler->panic("Could not get list of I2C buses");
+
+    for (de = readdir(d); de; de = readdir(d)) {
+        const char *p, * const *t;
+        char buf[PATH_MAX], buf2[PATH_MAX];
+
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+            continue;
+
+        if (snprintf(buf, sizeof(buf), "%s/%s", dirname, de->d_name) >= PATH_MAX)
+            continue;
+
+        p = realpath(buf, buf2);
+        if (!p || strncmp(p, "/sys", sizeof("/sys") - 1))
+            continue;
+
+        p += sizeof("/sys") - 1;
+
+        for (t = devpaths; t && *t; t++) {
+            if (strncmp(p, *t, strlen(*t)) == 0)
+                break;
+        }
+
+        if (!*t)
+            continue;
+
+        /* Found the device name, use the new path */
+        asprintf(&_device, "/dev/%s", de->d_name);
+        break;
+    }
+
+    closedir(d);
+
+    if (!((LinuxUtil*)hal.util)->is_chardev_node(_device))
+        hal.scheduler->panic("I2C device is not a chardev node");
+}
+
+LinuxI2CDriver::~LinuxI2CDriver()
+{
+    free(_device);
 }
 
 /*
@@ -174,11 +240,17 @@ uint8_t LinuxI2CDriver::readRegistersMultiple(uint8_t addr, uint8_t reg,
                                               uint8_t len, 
                                               uint8_t count, uint8_t* data)
 {
+#ifdef I2C_RDRW_IOCTL_MAX_MSGS
+    const uint8_t max_count = I2C_RDRW_IOCTL_MAX_MSGS / 2;
+#else
+    const uint8_t max_count = 8;
+#endif
+
     if (_fd == -1) {
         return 1;
     }
     while (count > 0) {
-        uint8_t n = count>8?8:count;
+        uint8_t n = count > max_count ? max_count : count;
         struct i2c_msg msgs[2*n];
         struct i2c_rdwr_ioctl_data i2c_data = {
         msgs : msgs,

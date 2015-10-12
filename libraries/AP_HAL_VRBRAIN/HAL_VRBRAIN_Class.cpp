@@ -1,10 +1,10 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
 
-#include <AP_HAL_VRBRAIN.h>
+#include "AP_HAL_VRBRAIN.h"
 #include "AP_HAL_VRBRAIN_Namespace.h"
 #include "HAL_VRBRAIN_Class.h"
 #include "Scheduler.h"
@@ -16,8 +16,8 @@
 #include "Util.h"
 #include "GPIO.h"
 
-#include <AP_HAL_Empty.h>
-#include <AP_HAL_Empty_Private.h>
+#include <AP_HAL_Empty/AP_HAL_Empty.h>
+#include <AP_HAL_Empty/AP_HAL_Empty_Private.h>
 
 #include <stdlib.h>
 #include <systemlib/systemlib.h>
@@ -44,19 +44,7 @@ static VRBRAINUtil utilInstance;
 static VRBRAINGPIO gpioDriver;
 
 //We only support 3 serials for VRBRAIN at the moment
-#if  defined(CONFIG_ARCH_BOARD_VRBRAIN_V40)
-#define UARTA_DEFAULT_DEVICE "/dev/ttyACM0"
-#define UARTB_DEFAULT_DEVICE "/dev/ttyS1"
-#define UARTC_DEFAULT_DEVICE "/dev/ttyS2"
-#define UARTD_DEFAULT_DEVICE "/dev/null"
-#define UARTE_DEFAULT_DEVICE "/dev/null"
-#elif  defined(CONFIG_ARCH_BOARD_VRBRAIN_V45)
-#define UARTA_DEFAULT_DEVICE "/dev/ttyACM0"
-#define UARTB_DEFAULT_DEVICE "/dev/ttyS1"
-#define UARTC_DEFAULT_DEVICE "/dev/ttyS2"
-#define UARTD_DEFAULT_DEVICE "/dev/null"
-#define UARTE_DEFAULT_DEVICE "/dev/null"
-#elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V50)
+#if  defined(CONFIG_ARCH_BOARD_VRBRAIN_V45)
 #define UARTA_DEFAULT_DEVICE "/dev/ttyACM0"
 #define UARTB_DEFAULT_DEVICE "/dev/ttyS1"
 #define UARTC_DEFAULT_DEVICE "/dev/ttyS2"
@@ -68,7 +56,19 @@ static VRBRAINGPIO gpioDriver;
 #define UARTC_DEFAULT_DEVICE "/dev/ttyS2"
 #define UARTD_DEFAULT_DEVICE "/dev/null"
 #define UARTE_DEFAULT_DEVICE "/dev/ttyS1"
+#elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V52)
+#define UARTA_DEFAULT_DEVICE "/dev/ttyACM0"
+#define UARTB_DEFAULT_DEVICE "/dev/ttyS0"
+#define UARTC_DEFAULT_DEVICE "/dev/ttyS2"
+#define UARTD_DEFAULT_DEVICE "/dev/null"
+#define UARTE_DEFAULT_DEVICE "/dev/ttyS1"
 #elif defined(CONFIG_ARCH_BOARD_VRUBRAIN_V51)
+#define UARTA_DEFAULT_DEVICE "/dev/ttyACM0"
+#define UARTB_DEFAULT_DEVICE "/dev/ttyS0"
+#define UARTC_DEFAULT_DEVICE "/dev/ttyS2"
+#define UARTD_DEFAULT_DEVICE "/dev/null"
+#define UARTE_DEFAULT_DEVICE "/dev/null"
+#elif defined(CONFIG_ARCH_BOARD_VRUBRAIN_V52)
 #define UARTA_DEFAULT_DEVICE "/dev/ttyACM0"
 #define UARTB_DEFAULT_DEVICE "/dev/ttyS0"
 #define UARTC_DEFAULT_DEVICE "/dev/ttyS2"
@@ -103,7 +103,9 @@ HAL_VRBRAIN::HAL_VRBRAIN() :
         &uartCDriver,  /* uartC */
         &uartDDriver,  /* uartD */
         &uartEDriver,  /* uartE */
-        &i2cDriver, /* i2c */
+        &i2cDriver, /* Empty i2c */
+        &i2cDriver, /* Empty i2c */
+        &i2cDriver, /* Empty i2c */
         &spiDeviceManager, /* spi */
         &analogIn, /* analogin */
         &storageDriver, /* storage */

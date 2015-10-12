@@ -16,7 +16,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
 
@@ -34,10 +34,22 @@ extern const AP_HAL::HAL& hal;
 
 // Constructor
 AP_BattMonitor_SMBus_PX4::AP_BattMonitor_SMBus_PX4(AP_BattMonitor &mon, uint8_t instance, AP_BattMonitor::BattMonitor_State &mon_state) :
-        AP_BattMonitor_SMBus(mon, instance, mon_state)
+        AP_BattMonitor_SMBus(mon, instance, mon_state),
+        _batt_fd(-1),
+        _capacity_updated(false)
 {
     // orb subscription for battery status
     _batt_sub = orb_subscribe(ORB_ID(battery_status));
+}
+
+void AP_BattMonitor_SMBus_PX4::init()
+{
+    // open the device
+    _batt_fd = open(BATT_SMBUS0_DEVICE_PATH, O_RDWR);
+    if (_batt_fd == -1) {
+        hal.console->printf("Unable to open " BATT_SMBUS0_DEVICE_PATH);
+        _state.healthy = false;
+    }
 }
 
 // read - read latest voltage and current
@@ -55,6 +67,22 @@ void AP_BattMonitor_SMBus_PX4::read()
             _state.voltage = batt_status.voltage_v;
             _state.current_amps = batt_status.current_a;
             _state.last_time_micros = hal.scheduler->micros();
+            _state.current_total_mah = batt_status.discharged_mah;
+            _state.healthy = true;
+
+            // read capacity
+            if ((_batt_fd >= 0) && !_capacity_updated) {
+                uint16_t tmp;
+                if (ioctl(_batt_fd, BATT_SMBUS_GET_CAPACITY, (unsigned long)&tmp) == OK) {
+                    _capacity_updated = true;
+                    set_capacity(tmp);
+                }
+            }
+        }
+    } else if (_state.healthy) {
+        // timeout after 5 seconds
+        if ((hal.scheduler->micros() - _state.last_time_micros) > AP_BATTMONITOR_SMBUS_TIMEOUT_MICROS) {
+            _state.healthy = false;
         }
     }
 }

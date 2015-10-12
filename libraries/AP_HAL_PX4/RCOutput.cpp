@@ -1,6 +1,6 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
 #include "RCOutput.h"
@@ -21,9 +21,9 @@ using namespace PX4;
 void PX4RCOutput::init(void* unused) 
 {
     _perf_rcout = perf_alloc(PC_ELAPSED, "APM_rcout");
-    _pwm_fd = open(PWM_OUTPUT_DEVICE_PATH, O_RDWR);
+    _pwm_fd = open(PWM_OUTPUT0_DEVICE_PATH, O_RDWR);
     if (_pwm_fd == -1) {
-        hal.scheduler->panic("Unable to open " PWM_OUTPUT_DEVICE_PATH);
+        hal.scheduler->panic("Unable to open " PWM_OUTPUT0_DEVICE_PATH);
     }
     if (ioctl(_pwm_fd, PWM_SERVO_ARM, 0) != 0) {
         hal.console->printf("RCOutput: Unable to setup IO arming\n");
@@ -41,10 +41,9 @@ void PX4RCOutput::init(void* unused)
         return;
     }
 
-	_pwm_sub = orb_subscribe(ORB_ID_VEHICLE_CONTROLS);
-
-    // mark number of outputs given by px4io as zero
-    _outputs.noutputs = 0;
+    for (uint8_t i=0; i<ORB_MULTI_MAX_INSTANCES; i++) {
+        _outputs[i].pwm_sub = orb_subscribe_multi(ORB_ID(actuator_outputs), i);
+    }
 
     _alt_fd = open("/dev/px4fmu", O_RDWR);
     if (_alt_fd == -1) {
@@ -59,10 +58,10 @@ void PX4RCOutput::init(void* unused)
     }
 
     // publish actuator vaules on demand
-    _actuator_direct_pub = -1;
+    _actuator_direct_pub = NULL;
 
     // and armed state
-    _actuator_armed_pub = -1;
+    _actuator_armed_pub = NULL;
 }
 
 
@@ -251,8 +250,12 @@ uint16_t PX4RCOutput::read(uint8_t ch)
     // if px4io has given us a value for this channel use that,
     // otherwise use the value we last sent. This makes it easier to
     // observe the behaviour of failsafe in px4io
-    if (ch < _outputs.noutputs) {
-        return _outputs.output[ch];
+    for (uint8_t i=0; i<ORB_MULTI_MAX_INSTANCES; i++) {
+        if (_outputs[i].pwm_sub >= 0 && 
+            ch < _outputs[i].outputs.noutputs &&
+            _outputs[i].outputs.output[ch] > 0) {
+            return _outputs[i].outputs.output[ch];
+        }
     }
     return _period[ch];
 }
@@ -280,7 +283,7 @@ void PX4RCOutput::_arm_actuators(bool arm)
     _armed.lockdown = false;
     _armed.force_failsafe = false;
 
-    if (_actuator_armed_pub == -1) {
+    if (_actuator_armed_pub == NULL) {
         _actuator_armed_pub = orb_advertise(ORB_ID(actuator_armed), &_armed);
     } else {
         orb_publish(ORB_ID(actuator_armed), _actuator_armed_pub, &_armed);
@@ -294,9 +297,15 @@ void PX4RCOutput::_publish_actuators(void)
 {
 	struct actuator_direct_s actuators;
 
+    if (_esc_pwm_min == 0 ||
+        _esc_pwm_max == 0) {
+        // not initialised yet
+        return;
+    }
+
 	actuators.nvalues = _max_channel;
-    if (actuators.nvalues > NUM_ACTUATORS_DIRECT) {
-        actuators.nvalues = NUM_ACTUATORS_DIRECT;
+    if (actuators.nvalues > actuators.NUM_ACTUATORS_DIRECT) {
+        actuators.nvalues = actuators.NUM_ACTUATORS_DIRECT;
     }
     // don't publish more than 8 actuators for now, as the uavcan ESC
     // driver refuses to update any motors if you try to publish more
@@ -304,14 +313,19 @@ void PX4RCOutput::_publish_actuators(void)
     if (actuators.nvalues > 8) {
         actuators.nvalues = 8;
     }
+    bool armed = hal.util->get_soft_armed();
 	actuators.timestamp = hrt_absolute_time();
     for (uint8_t i=0; i<actuators.nvalues; i++) {
-        actuators.values[i] = (_period[i] - _esc_pwm_min) / (float)(_esc_pwm_max - _esc_pwm_min);
+        if (!armed) {
+            actuators.values[i] = 0;
+        } else {
+            actuators.values[i] = (_period[i] - _esc_pwm_min) / (float)(_esc_pwm_max - _esc_pwm_min);
+        }
         // actuator values are from -1 to 1
         actuators.values[i] = actuators.values[i]*2 - 1;
     }
 
-    if (_actuator_direct_pub == -1) {
+    if (_actuator_direct_pub == NULL) {
         _actuator_direct_pub = orb_advertise(ORB_ID(actuator_direct), &actuators);
     } else {
         orb_publish(ORB_ID(actuator_direct), _actuator_direct_pub, &actuators);
@@ -362,10 +376,14 @@ void PX4RCOutput::_timer_tick(void)
     }
 
 update_pwm:
-	bool rc_updated = false;
-	if (_pwm_sub >= 0 && orb_check(_pwm_sub, &rc_updated) == 0 && rc_updated) {
-        orb_copy(ORB_ID_VEHICLE_CONTROLS, _pwm_sub, &_outputs);
-	}
+    for (uint8_t i=0; i<ORB_MULTI_MAX_INSTANCES; i++) {
+        bool rc_updated = false;
+        if (_outputs[i].pwm_sub >= 0 && 
+            orb_check(_outputs[i].pwm_sub, &rc_updated) == 0 && 
+            rc_updated) {
+            orb_copy(ORB_ID(actuator_outputs), _outputs[i].pwm_sub, &_outputs[i].outputs);
+        }
+    }
 
 }
 

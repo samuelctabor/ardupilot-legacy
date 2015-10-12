@@ -20,7 +20,7 @@
 /*
  *  this module deals with calculations involving struct Location
  */
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include <stdlib.h>
 #include "AP_Math.h"
 
@@ -35,8 +35,10 @@
 
 float longitude_scale(const struct Location &loc)
 {
+#if HAL_CPU_CLASS < HAL_CPU_CLASS_150
     static int32_t last_lat;
     static float scale = 1.0;
+    // don't optimise on faster CPUs. It causes some minor errors on Replay
     if (labs(last_lat - loc.lat) < 100000) {
         // we are within 0.01 degrees (about 1km) of the
         // same latitude. We can avoid the cos() and return
@@ -47,6 +49,10 @@ float longitude_scale(const struct Location &loc)
     scale = constrain_float(scale, 0.01f, 1.0f);
     last_lat = loc.lat;
     return scale;
+#else
+    float scale = cosf(loc.lat * 1.0e-7f * DEG_TO_RAD);
+    return constrain_float(scale, 0.01f, 1.0f);
+#endif
 }
 
 //return distance to north
@@ -149,7 +155,7 @@ void location_update(struct Location &loc, float bearing, float distance)
  */
 void location_offset(struct Location &loc, float ofs_north, float ofs_east)
 {
-    if (ofs_north != 0 || ofs_east != 0) {
+    if (!is_zero(ofs_north) || !is_zero(ofs_east)) {
         int32_t dlat = ofs_north * LOCATION_SCALING_FACTOR_INV;
         int32_t dlng = (ofs_east * LOCATION_SCALING_FACTOR_INV) / longitude_scale(loc);
         loc.lat += dlat;
@@ -238,6 +244,13 @@ float wrap_PI(float angle_in_radians)
 }
 
 /*
+  return true if lat and lng match. Ignores altitude and options
+ */
+bool locations_are_same(const struct Location &loc1, const struct Location &loc2) {
+    return (loc1.lat == loc2.lat) && (loc1.lng == loc2.lng);
+}
+
+/*
   print a int32_t lat/long in decimal degrees
  */
 void print_latlon(AP_HAL::BetterStream *s, int32_t lat_or_lon)
@@ -275,7 +288,7 @@ void wgsecef2llh(const Vector3d &ecef, Vector3d &llh) {
   const double p = sqrt(ecef[0]*ecef[0] + ecef[1]*ecef[1]);
 
   /* Compute longitude first, this can be done exactly. */
-  if (p != 0)
+  if (!is_zero(p))
     llh[1] = atan2(ecef[1], ecef[0]);
   else
     llh[1] = 0;

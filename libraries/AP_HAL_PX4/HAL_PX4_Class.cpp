@@ -1,10 +1,10 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
 
-#include <AP_HAL_PX4.h>
+#include "AP_HAL_PX4.h"
 #include "AP_HAL_PX4_Namespace.h"
 #include "HAL_PX4_Class.h"
 #include "Scheduler.h"
@@ -15,9 +15,10 @@
 #include "AnalogIn.h"
 #include "Util.h"
 #include "GPIO.h"
+#include "I2CDriver.h"
 
-#include <AP_HAL_Empty.h>
-#include <AP_HAL_Empty_Private.h>
+#include <AP_HAL_Empty/AP_HAL_Empty.h>
+#include <AP_HAL_Empty/AP_HAL_Empty_Private.h>
 
 #include <stdlib.h>
 #include <systemlib/systemlib.h>
@@ -30,8 +31,7 @@
 
 using namespace PX4;
 
-static Empty::EmptySemaphore  i2cSemaphore;
-static Empty::EmptyI2CDriver  i2cDriver(&i2cSemaphore);
+static PX4I2CDriver i2cDriver;
 static Empty::EmptySPIDeviceManager spiDeviceManager;
 //static Empty::EmptyGPIO gpioDriver;
 
@@ -72,6 +72,8 @@ HAL_PX4::HAL_PX4() :
         &uartDDriver,  /* uartD */
         &uartEDriver,  /* uartE */
         &i2cDriver, /* i2c */
+        NULL,   /* only one i2c */
+        NULL,   /* only one i2c */
         &spiDeviceManager, /* spi */
         &analogIn, /* analogin */
         &storageDriver, /* storage */
@@ -93,7 +95,7 @@ extern const AP_HAL::HAL& hal;
 /*
   set the priority of the main APM task
  */
-static void set_priority(uint8_t priority)
+void hal_px4_set_priority(uint8_t priority)
 {
     struct sched_param param;
     param.sched_priority = priority;
@@ -108,7 +110,7 @@ static void set_priority(uint8_t priority)
  */
 static void loop_overtime(void *)
 {
-    set_priority(APM_OVERTIME_PRIORITY);
+    hal_px4_set_priority(APM_OVERTIME_PRIORITY);
     px4_ran_overtime = true;
 }
 
@@ -134,7 +136,7 @@ static int main_loop(int argc, char **argv)
       run setup() at low priority to ensure CLI doesn't hang the
       system, and to allow initial sensor read loops to run
      */
-    set_priority(APM_STARTUP_PRIORITY);
+    hal_px4_set_priority(APM_STARTUP_PRIORITY);
 
     schedulerInstance.hal_initialized();
 
@@ -150,7 +152,7 @@ static int main_loop(int argc, char **argv)
     /*
       switch to high priority for main loop
      */
-    set_priority(APM_MAIN_PRIORITY);
+    hal_px4_set_priority(APM_MAIN_PRIORITY);
 
     while (!_px4_thread_should_exit) {
         perf_begin(perf_loop);
@@ -170,7 +172,7 @@ static int main_loop(int argc, char **argv)
               we ran over 1s in loop(), and our priority was lowered
               to let a driver run. Set it back to high priority now.
              */
-            set_priority(APM_MAIN_PRIORITY);
+            hal_px4_set_priority(APM_MAIN_PRIORITY);
             perf_count(perf_overrun);
             px4_ran_overtime = false;
         }
@@ -178,11 +180,11 @@ static int main_loop(int argc, char **argv)
         perf_end(perf_loop);
 
         /*
-          give up 500 microseconds of time, to ensure drivers get a
+          give up 250 microseconds of time, to ensure drivers get a
           chance to run. This relies on the accurate semaphore wait
           using hrt in semaphore.cpp
          */
-        hal.scheduler->delay_microseconds(500);
+        hal.scheduler->delay_microseconds(250);
     }
     thread_running = false;
     return 0;
@@ -231,12 +233,12 @@ void HAL_PX4::init(int argc, char * const argv[]) const
                    SKETCHNAME, deviceA, deviceC, deviceD, deviceE);
 
             _px4_thread_should_exit = false;
-            daemon_task = task_spawn_cmd(SKETCHNAME,
-                                     SCHED_FIFO,
-                                     APM_MAIN_PRIORITY,
-                                     8192,
-                                     main_loop,
-                                     NULL);
+            daemon_task = px4_task_spawn_cmd(SKETCHNAME,
+                                             SCHED_FIFO,
+                                             APM_MAIN_PRIORITY,
+                                             APM_MAIN_THREAD_STACK_SIZE,
+                                             main_loop,
+                                             NULL);
             exit(0);
         }
 

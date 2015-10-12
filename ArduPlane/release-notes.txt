@@ -1,3 +1,410 @@
+Release 3.4.0, 24th September 2015
+----------------------------------
+
+The ArduPilot development team is proud to announce the release of
+version 3.4.0 of APM:Plane. This is a major release with a lot of
+changes so please read the notes carefully!
+
+First release with EKF by default
+
+This is the also the first release that enables the EKF (Extended
+Kalman Filter) for attitude and position estimation by default. This
+has been in development for a long time, and significantly improves
+flight performance. You can still disable the EKF if you want to using
+the AHRS_EKF_USE parameter, but it is strongly recommended that you
+use the EKF. Note that if an issue is discovered with the EKF in
+flight it will automatically be disabled and the older DCM system will
+be used instead. That should be very rare.
+
+In order to use the EKF we need to be a bit more careful about the
+setup of the aircraft. That is why in the last release we enabled
+arming and pre-arm checks by default. Please don't disable the arming
+checks, they are there for very good reasons.
+
+Last release with APM1/APM2 support
+
+This will be the last major release that supports the old APM1/APM2
+AVR based boards. We have finally run out of flash space and
+memory. In the last few releases we spent quite a bit of time trying
+to squeeze more and more into the small flash space of the APM1/APM2,
+but it had to end someday if ArduPilot is to continue to develop. I am
+open to the idea of someone else volunteering to keep doing
+development of APM1/APM2 so if you have the skills and inclination do
+please get in touch. Otherwise I will only do small point release
+changes for major bugs.
+
+Even to get this release onto the APM1/APM2 we had to make sacrifices
+in terms of functionality. The APM1/APM2 release is missing quite a
+few features that are on the Pixhawk and other boards. For example:
+
+  - no rangefinder support for landing
+  - no terrain following
+  - no EKF support
+  - no camera control
+  - no CLI support
+  - no advanced failsafe support
+  - no HIL support (sorry!)
+  - support for far fewer GPS types
+
+that is just the most obvious major features that are missing on
+APM1/APM2. There are also numerous other smaller things where we need
+to take shortcuts on the APM1/APM2. Some of these features were
+available on older APM1/APM2 releases but needed to be removed to
+allow us to squeeze the new release onto the board. So if you are
+happy with a previous release on your APM2 and want a feature that is
+in that older release and not in this one then perhaps you shouldn't
+upgrade.
+
+PID Tuning
+
+While most people are happy with autotune to tune the PIDs for their
+planes, it is nice also to be able to do fine tuning by hand. This
+release includes new dataflash and mavlink messages to help with that
+tuning. You can now see the individual contributions of the P, I and D
+components of each PID in the logs, allowing you to get a much better
+picture of the performance.
+
+A simple application of this new tuning is you can easily see if your
+trim is off. If the Pitch I term is constantly contributing a
+signifcant positive factor then you know that ArduPilot is having to
+constantly apply up elevator, which means your plane is nose
+heavy. The same goes for roll, and can also be used to help tune your
+ground steering.
+
+Vibration Logging
+
+This release includes a lot more options for diagnosing vibration
+issues. You will notice new VIBRATION messages in MAVLink and VIBE
+messages in the dataflash logs. Those give you a good idea of your
+(unfiltered) vibration levels. For really detailed analysis you can
+setup your LOG_BITMASK to include raw logging, which gives you every
+accel and gyro sample on your Pixhawk. You can then do a FFT on the
+result and plot the distribution of vibration level with
+frequency. That is great for finding the cause of vibration
+issues. Note that you need a very fast microSD card for that to work!
+
+Rudder Disarm
+
+This is the first release that allows you to disarm using the rudder
+if you want to. It isn't enabled by default (due to the slight risk of
+accidentially disarming while doing aerobatics). You can enable it
+with the ARMING_RUDDER parameter by setting it to 2. It will only
+allow you to disarm if the autopilot thinks you are not flying at the
+time (thanks to the "is_flying" heuristics from Tom Pittenger).
+
+More Sensors
+
+This release includes support for a bunch more sensors. It now supports
+3 different interfaces for the LightWare range of Lidars (serial, I2C
+and analog), and also supports the very nice Septentrio RTK
+dual-frequency GPS (the first dual-frequency GPS we have support
+for). It also supports the new "blue label" Lidar from Pulsed Light
+(both on I2C and PWM).
+
+For the uBlox GPS, we now have a lot more configurability of the
+driver, with the ability to set the GNSS mode for different
+constellations. Also in the uBlox driver we support logging of the raw
+carrier phase and pseudo range data, which allows for post-flight RTK
+analysis with raw-capable receivers for really accurate photo
+missions.
+
+Better Linux support
+
+This release includes a lot of improvements to the Linux based
+autopilot boards, including the NavIO+, the PXF and ERLE boards and
+the BBBMini and the new RasPilot board. If you like the idea of flying
+with Linux then please try it out!
+
+On-board compass calibrator
+
+We also have a new on-board compass calibrator, which also adds calibration
+for soft iron effects, allowing for much more accurate compass
+calibration. Support for starting the compass calibration in the
+various ground stations is still under development, but it looks like
+this will be a big improvement to compass calibration.
+
+Lots of other changes!
+
+The above list is just a taste of the changes that have gone into this
+release. Thousands of small changes have gone into this release with
+dozens of people contributing. Many thanks to everyone who helped!
+
+Other key changes include:
+
+  - fixed return point on geofence breach
+  - enable messages for MAVLink gimbal support
+  - use 64 bit timestamps in dataflash logs
+  - added realtime PID tuning messages and PID logging
+  - fixed a failure case for the px4 failsafe mixer
+  - added DSM binding support on Pixhawk
+  - added ALTITUDE_WAIT mission command
+  - added vibration level logging
+  - ignore low voltage failsafe while disarmed
+  - added delta velocity and delta angle logging
+  - fix LOITER_TO_ALT to verify headings towards waypoints within the loiter radius
+  - allow rudder disarm based on ARMING_RUDDER parameter
+  - fix default behaviour of flaps
+  - prevent mode switch changes changing WP tracking
+  - make TRAINING mode obey stall prevention roll limits
+  - disable TRIM_RC_AT_START by default
+  - fixed parameter documentation spelling errors
+  - send MISSION_ITEM_REACHED messages on waypoint completion
+  - fixed airspeed handling in SITL simulators
+  - enable EKF by default on plane
+  - Improve gyro bias learning rate for plane and rover
+  - Allow switching primary GPS instance with 1 sat difference
+  - added NSH over MAVLink support
+  - added support for mpu9250 on pixhawk and pixhawk2
+  - Add support for logging ublox RXM-RAWX messages
+  - lots of updates to improve support for Linux based boards
+  - added ORGN message in dataflash
+  - added support for new "blue label" Lidar
+  - switched to real hdop in uBlox driver
+  - improved auto-config of uBlox
+  - raise accel discrepancy arming threshold to 0.75
+  - improved support for tcp and udp connections on Linux
+  - switched to delta-velocity and delta-angles in DCM
+  - improved detection of which accel to use in EKF
+  - improved auto-detections of flow control on pixhawk UARTs
+  - Failsafe actions are not executed if already on final approach or land.
+  - Option to trigger GCS failsafe only in AUTO mode.
+  - added climb/descend parameter to CONTINUE_AND_CHANGE_ALT
+  - added HDOP to uavcan GPS driver
+  - improved sending of autopilot version
+  - prevent motor startup with bad throttle trim on reboot
+  - log zero rangefinder distance when unhealthy
+  - added PRU firmware files for BeagleBoneBlack port
+  - fix for recent STORM32 gimbal support
+  - changed sending of STATUSTEXT severity to use correct values
+  - added new RSSI library with PWM input support
+  - fixed MAVLink heading report for UAVCAN GPS
+  - support LightWare I2C rangefinder on Linux
+  - improved staging of parameters and formats on startup to dataflash
+  - added new on-board compass calibrator
+  - improved RCOutput code for NavIO port
+  - added support for Septentrio GPS receiver
+  - support DO_MOUNT_CONTROl via command-long interface
+  - added CAM_RELAY_ON parameter
+  - moved SKIP_GYRO_CAL functionality to INS_GYR_CAL
+  - added detection of bad lidar settings for landing
+
+Note that the documentation hasn't yet caught up with all the changes
+in this release. We are still working on that, but meanwhile if you
+see a feature that interests you and it isn't documented yet then
+please ask.
+
+
+
+Release 3.3.0, 20th May 2015
+----------------------------
+
+The ardupilot development team is proud to announce the release of
+version 3.3.0 of APM:Plane. This is a major release with a lot of
+changes. Please read the release notes carefully!
+
+The last stable release was 3 months ago, and since that time we have
+applied over 1200 changes to the code. It has been a period of very
+rapid development for ArduPilot. Explaining all of the changes that
+have been made would take far too long, so I've chosen some key
+changes to explain in detail, and listed the most important secondary
+changes in a short form. Please ask for details if there is a change
+you see listed that you want some more information on.
+
+Arming Changes
+--------------
+
+This is the first release of APM:Plane where ARMING_CHECK and
+ARMING_REQUIRE both default to enabled. That means when you upgrade if
+you didn't previously have arming enabled you will need to learn about
+arming your plane.
+
+Please see this page for more information on arming:
+
+  http://plane.ardupilot.com/wiki/arming-your-plane/
+
+I know many users will be tempted to disable the arming checks, but
+please don't do that without careful thought. The arming checks are an
+important part of ensuring the aircraft is ready to fly, and a common
+cause of flight problems is to takeoff before ArduPilot is ready.
+
+Re-do Accelerometer Calibration
+-------------------------------
+
+Due to a change in the maximum accelerometer range on the Pixhawk all
+users must re-do their accelerometer calibration for this release. If
+you don't then your plane will fail to arm with a message saying that
+you have not calibrated the accelerometers.
+
+Only 3D accel calibration
+-------------------------
+
+The old "1D" accelerometer calibration method has now been removed, so
+you must use the 3D accelerometer calibration method. The old method
+was removed because a significant number of users had poor flights due
+to scaling and offset errors on their accelerometers when they used
+the 1D method. My apologies for people with very large aircraft who
+find the 3D method difficult.
+
+Note that you can do the accelerometer calibration with the autopilot
+outside the aircraft which can make things easier for large aircraft.
+
+Auto-disarm
+-----------
+
+After an auto-landing the autopilot will now by default disarm after
+LAND_DISARMDELAY seconds (with a default of 20 seconds). This feature
+is to prevent the motor from spinning up unexpectedly on the ground
+after a landing.
+
+HIL_MODE parameter
+------------------
+
+It is now possible to configure your autopilot for hardware in the
+loop simulation without loading a special firmware. Just set the
+parameter HIL_MODE to 1 and this will enable HIL for any
+autopilot. This is designed to make it easier for users to try HIL
+without having to find a HIL firmware.
+
+SITL on Windows
+---------------
+
+The SITL software in the loop simulation system has been completely
+rewritten for this release. A major change is to make it possible to
+run SITL on native windows without needing a Linux virtual
+machine. There should be a release of MissionPlanner for Windows soon
+which will make it easy to launch a SITL instance.
+
+The SITL changes also include new backends, including the CRRCSim
+flight simulator. This gives us a much wider range of aircraft we can
+use for SITL. See http://dev.ardupilot.com/wiki/simulation-2/ for more
+information.
+
+Throttle control on takeoff
+---------------------------
+
+A number of users had problems with pitch control on auto-takeoff, and
+with the aircraft exceeding its target speed during takeoff. The
+auto-takeoff code has now been changed to use the normal TECS throttle
+control which should solve this problem.
+
+Rudder only support
+-------------------
+
+There is a new RUDDER_ONLY parameter for aircraft without ailerons,
+where roll is controlled by the rudder. Please see the documentation
+for more information on flying with a rudder only aircraft:
+
+  http://plane.ardupilot.com/wiki/arduplane-parameters/#rudder_only_aircraft_arduplanerudder_only
+
+APM1/APM2 Support
+-----------------
+
+We have managed to keep support for the APM1 and APM2 in this release,
+but in order to fit it in the limited flash space we had to disable
+some more features when building for those boards. For this release
+the AP_Mount code for controlling camera mounts is disabled on
+APM1/APM2.
+
+At some point soon it will become impractical to keep supporting the
+APM1/APM2 for planes. Please consider moving to a 32 bit autopilot
+soon if you are still using an APM1 or APM2.
+
+New INS code
+------------
+
+There have been a lot of changes to the gyro and accelerometer
+handling for this release. The accelerometer range on the Pixhawk has
+been changed to 16g from 8g to prevent clipping on high vibration
+aircraft, and the sampling rate on the lsm303d has been increased to
+1600Hz. 
+
+An important bug has also been fixed which caused aliasing in the
+sampling process from the accelerometers. That bug could cause 
+attitude errors in high vibration environments.
+
+Numerous Landing Changes
+------------------------
+
+Once again there have been a lot of improvements to the automatic
+landing support. Perhaps most important is the introduction of a
+smooth transition from landing approach to the flare, which reduces
+the tendency to pitch up too much on flare. 
+
+There is also a new parameter TECS_LAND_PMAX which controls the
+maximum pitch during landing. This defaults to 10 degrees, but for
+many aircraft a smaller value may be appropriate. Reduce it to 5
+degrees if you find you still get too much pitch up during the flare.
+
+Other secondary changes in this release include:
+
+ - a new SerialManager library which gives much more flexible management of serial port assignment
+ - changed the default FS_LONG_TIMEOUT to 5 seconds
+ - raised default IMAX for roll/pitch to 3000
+ - lowered default L1 navigation period to 20
+ - new BRD_SBUS_OUT parameter to enable SBUS output on Pixhawk
+ - large improvements to the internals of PX4Firmware/PX4NuttX for better performance
+ - auto-formatting of microSD cards if they can't be mounted on boot (PX4/Pixhawk only)
+ - a new PWM based driver for the PulsedLight Lidar to avoid issues with the I2C interface
+ - fixed throttle forcing to zero when disarmed
+ - only reset mission on disarm if not in AUTO mode
+ - much better handling of steep landings
+ - added smooth transition in landing flare
+ - added HIL_MODE parameter for HIL without a special firmware
+ - lowered default FS_LONG_TIMEOUT to 5 seconds
+ - mark old ELEVON_MIXING mode as deprecated
+ - fixed 50Hz MAVLink support
+ - support DO_SET_HOME MAVLink command
+ - fixed larger values of TKOFF_THR_DELAY
+ - allow PulsedLight Lidar to be disabled at a given height
+ - fixed bungee launch (long throttle delay)
+ - fixed a bug handling entering AUTO mode before we have GPS lock
+ - added CLI_ENABLED parameter
+ - removed 1D accel calibration
+ - added EKF_STATUS_REPORT MAVLink message
+ - added INITIAL_MODE parameter
+ - added TRIM_RC_AT_START parameter
+ - added auto-disarm after landing (LAND_DISARMDELAY)
+ - added LOCAL_POSITION_NED MAVLink message
+ - avoid triggering a fence breach in final stage of landing
+ - rebuild glide slope if we are above it and climbing
+ - use TECS to control throttle on takeoff
+ - added RUDDER_ONLY parameter to better support planes with no ailerons
+ - updated Piksi RTK GPS driver
+ - improved support for GPS data injection (for Piksi RTK GPS)
+ - added NAV_LOITER_TO_ALT mission item
+ - fixed landing approach without an airspeed sensor
+ - support RTL_AUTOLAND=2 for landing without coming to home first
+ - disabled camera mount support on APM1/APM2
+ - added support for SToRM32 and Alexmos camera gimbals
+ - added support for Jaimes mavlink enabled gimbal
+ - improved EKF default tuning for planes
+ - updated support for NavIO and NavIO+ boards
+ - updated support for VRBrain boards
+ - fixes for realtime threads on Linux
+ - added simulated sensor lag for baro and mag in SITL
+ - made it possible to build SITL for native Windows
+ - switched to faster accel sampling on Pixhawk
+ - added coning corrections on Pixhawk
+ - set ARMING_CHECK to 1 by default
+ - disable NMEA and SiRF GPS on APM1/APM2
+ - support MPU9255 IMU on Linux
+ - updates to BBBMINI port for Linux
+ - added TECS_LAND_PMAX parameter
+ - switched to synthetic clock in SITL
+ - support CRRCSim FDM backend in SITL
+ - new general purpose replay parsing code
+ - switched to 16g accel range in Pixhawk
+ - added FENCE_AUTOENABLE=2 for disabling just fence floor
+ - added POS dataflash log message
+ - changed GUIDED behaviour to match copter
+ - added support for a 4th MAVLink channel
+ - support setting AHRS_TRIM in preflight calibration
+ - fixed a PX4 mixer out of range error
+
+Best wishes to all APM:Plane users from the dev team, and happy
+flying!
+
+
 Release 3.2.2, February 10th 2015
 ---------------------------------
 

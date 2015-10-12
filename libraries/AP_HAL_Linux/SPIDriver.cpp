@@ -1,4 +1,5 @@
-#include <AP_HAL.h>
+#include <AP_Common/AP_Common.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 #include "SPIDriver.h"
@@ -20,9 +21,10 @@ using namespace Linux;
 extern const AP_HAL::HAL& hal;
 
 #define MHZ (1000U*1000U)
+#define KHZ (1000U)
 
-#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXF || CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLE
-LinuxSPIDeviceDriver LinuxSPIDeviceManager::_device[LINUX_SPI_DEVICE_NUM_DEVICES] = {
+#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXF || CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLEBOARD
+LinuxSPIDeviceDriver LinuxSPIDeviceManager::_device[] = {
     // different SPI tables per board subtype
     LinuxSPIDeviceDriver(1, 0, AP_HAL::SPIDevice_LSM9DS0_AM, SPI_MODE_3, 8, BBB_P9_17,  10*MHZ,10*MHZ),
     LinuxSPIDeviceDriver(1, 0, AP_HAL::SPIDevice_LSM9DS0_G,  SPI_MODE_3, 8, BBB_P8_9,   10*MHZ,10*MHZ),
@@ -33,21 +35,33 @@ LinuxSPIDeviceDriver LinuxSPIDeviceManager::_device[LINUX_SPI_DEVICE_NUM_DEVICES
     LinuxSPIDeviceDriver(2, 0, AP_HAL::SPIDevice_Dataflash,  SPI_MODE_3, 8, BBB_P8_12,  6*MHZ, 6*MHZ),
 };
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_NAVIO
-LinuxSPIDeviceDriver LinuxSPIDeviceManager::_device[LINUX_SPI_DEVICE_NUM_DEVICES] = {
+LinuxSPIDeviceDriver LinuxSPIDeviceManager::_device[] = {
     /* MPU9250 is restricted to 1MHz for non-data and interrupt registers */
-    LinuxSPIDeviceDriver(0, 0, AP_HAL::SPIDevice_MPU9250, SPI_MODE_0, 8, RPI_GPIO_7,  1*MHZ, 16*MHZ),
-    LinuxSPIDeviceDriver(0, 0, AP_HAL::SPIDevice_Ublox, SPI_MODE_0, 8, RPI_GPIO_8,  1*MHZ, 4*MHZ),
+    LinuxSPIDeviceDriver(0, 1, AP_HAL::SPIDevice_MPU9250, SPI_MODE_0, 8, SPI_CS_KERNEL,  1*MHZ, 20*MHZ),
+    LinuxSPIDeviceDriver(0, 0, AP_HAL::SPIDevice_Ublox, SPI_MODE_0, 8, SPI_CS_KERNEL,  250*KHZ, 5*MHZ),
 };
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BBBMINI
-LinuxSPIDeviceDriver LinuxSPIDeviceManager::_device[LINUX_SPI_DEVICE_NUM_DEVICES] = {
-    LinuxSPIDeviceDriver(2, 0, AP_HAL::SPIDevice_MS5611,     SPI_MODE_3, 8, BBB_P9_42,  10*MHZ,10*MHZ),
+LinuxSPIDeviceDriver LinuxSPIDeviceManager::_device[] = {
     /* MPU9250 is restricted to 1MHz for non-data and interrupt registers */
-    LinuxSPIDeviceDriver(2, 0, AP_HAL::SPIDevice_MPU9250,    SPI_MODE_3, 8, BBB_P9_23,  1*MHZ, 20*MHZ),
+    LinuxSPIDeviceDriver(2, 0, AP_HAL::SPIDevice_MPU9250,    SPI_MODE_3, 8, SPI_CS_KERNEL,  1*MHZ, 20*MHZ),
+    LinuxSPIDeviceDriver(2, 1, AP_HAL::SPIDevice_MS5611,     SPI_MODE_3, 8, SPI_CS_KERNEL,  10*MHZ,10*MHZ),
+};
+#elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_RASPILOT
+LinuxSPIDeviceDriver LinuxSPIDeviceManager::_device[] = {
+    /* MPU9250 is restricted to 1MHz for non-data and interrupt registers */
+    LinuxSPIDeviceDriver(0, 0, AP_HAL::SPIDevice_MPU6000, SPI_MODE_3, 8, RPI_GPIO_25,  1*MHZ, 8*MHZ),
+    LinuxSPIDeviceDriver(0, 0, AP_HAL::SPIDevice_MS5611,  SPI_MODE_3, 8, RPI_GPIO_23,  1*MHZ, 8*MHZ),
+    LinuxSPIDeviceDriver(0, 0, AP_HAL::SPIDevice_L3GD20,  SPI_MODE_3, 8, RPI_GPIO_12,  1*MHZ, 8*MHZ),
+    LinuxSPIDeviceDriver(0, 0, AP_HAL::SPIDevice_LSM303D, SPI_MODE_3, 8, RPI_GPIO_22,  1*MHZ, 8*MHZ),
+    LinuxSPIDeviceDriver(0, 0, AP_HAL::SPIDevice_Dataflash, SPI_MODE_3, 8, RPI_GPIO_5,  1*MHZ, 8*MHZ),
+    LinuxSPIDeviceDriver(0, 0, AP_HAL::SPIDevice_RASPIO, SPI_MODE_3, 8, RPI_GPIO_7,  8*MHZ, 8*MHZ),
 };
 #else
 // empty device table
 LinuxSPIDeviceDriver LinuxSPIDeviceManager::_device[0];
 #endif
+
+#define LINUX_SPI_DEVICE_NUM_DEVICES ARRAY_SIZE(LinuxSPIDeviceManager::_device)
 
 // have a separate semaphore per bus
 LinuxSemaphore LinuxSPIDeviceManager::_semaphore[LINUX_SPI_MAX_BUSES];
@@ -86,9 +100,9 @@ AP_HAL::Semaphore* LinuxSPIDeviceDriver::get_semaphore()
     return LinuxSPIDeviceManager::get_semaphore(_bus);
 }
 
-void LinuxSPIDeviceDriver::transaction(const uint8_t *tx, uint8_t *rx, uint16_t len)
+bool LinuxSPIDeviceDriver::transaction(const uint8_t *tx, uint8_t *rx, uint16_t len)
 {
-    LinuxSPIDeviceManager::transaction(*this, tx, rx, len);
+    return LinuxSPIDeviceManager::transaction(*this, tx, rx, len);
 }
 
 void LinuxSPIDeviceDriver::set_bus_speed(enum bus_speed speed)
@@ -206,11 +220,16 @@ void LinuxSPIDeviceManager::cs_release(enum AP_HAL::SPIDevice type)
     }
 }
 
-void LinuxSPIDeviceManager::transaction(LinuxSPIDeviceDriver &driver, const uint8_t *tx, uint8_t *rx, uint16_t len)
+bool LinuxSPIDeviceManager::transaction(LinuxSPIDeviceDriver &driver, const uint8_t *tx, uint8_t *rx, uint16_t len)
 {
+    int r;
     // we set the mode before we assert the CS line so that the bus is
     // in the correct idle state before the chip is selected
-    ioctl(driver._fd, SPI_IOC_WR_MODE, &driver._mode);
+    r = ioctl(driver._fd, SPI_IOC_WR_MODE, &driver._mode);
+    if (r == -1) {
+        hal.console->printf("SPI: error on setting mode\n");
+        return false;
+    }
 
     cs_assert(driver._type);
     struct spi_ioc_transfer spi[1];
@@ -228,18 +247,30 @@ void LinuxSPIDeviceManager::transaction(LinuxSPIDeviceDriver &driver, const uint
         memset(rx, 0, len);
     }
 
-    ioctl(driver._fd, SPI_IOC_MESSAGE(1), &spi);
+    r = ioctl(driver._fd, SPI_IOC_MESSAGE(1), &spi);
     cs_release(driver._type);
+
+    if (r == -1) {
+        hal.console->printf("SPI: error on doing transaction\n");
+        return false;
+    }
+
+    return true;
 }
 
 /*
   return a SPIDeviceDriver for a particular device
  */
-AP_HAL::SPIDeviceDriver *LinuxSPIDeviceManager::device(enum AP_HAL::SPIDevice dev)
+AP_HAL::SPIDeviceDriver *LinuxSPIDeviceManager::device(enum AP_HAL::SPIDevice dev, uint8_t index)
 {
+    uint8_t count = 0;
     for (uint8_t i=0; i<LINUX_SPI_DEVICE_NUM_DEVICES; i++) {
         if (_device[i]._type == dev) {
-            return &_device[i];
+            if (count == index) {
+                return &_device[i];
+            } else {
+                count++;
+            }
         }
     }
     return NULL;

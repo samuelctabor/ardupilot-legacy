@@ -14,9 +14,13 @@
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-#include <AP_AHRS.h>
-#include <AP_HAL.h>
+#include "AP_AHRS.h"
+#include <AP_HAL/AP_HAL.h>
 extern const AP_HAL::HAL& hal;
+
+#if AHRS_EKF_USE_ALWAYS
+const int8_t AP_AHRS::_ekf_use;
+#endif
 
 // table of user settable parameters
 const AP_Param::GroupInfo AP_AHRS::var_info[] PROGMEM = {
@@ -93,7 +97,7 @@ const AP_Param::GroupInfo AP_AHRS::var_info[] PROGMEM = {
     AP_GROUPINFO("ORIENTATION", 9, AP_AHRS, _board_orientation, 0),
 
     // @Param: COMP_BETA
-    // @DisplayName: AHRS Velocity Complmentary Filter Beta Coefficient
+    // @DisplayName: AHRS Velocity Complementary Filter Beta Coefficient
     // @Description: This controls the time constant for the cross-over frequency used to fuse AHRS (airspeed and heading) and GPS data to estimate ground velocity. Time constant is 0.1/beta. A larger time constant will use GPS data less and a small time constant will use air data less.
     // @Range: 0.001 0.5
     // @Increment: .01
@@ -111,11 +115,11 @@ const AP_Param::GroupInfo AP_AHRS::var_info[] PROGMEM = {
     // NOTE: index 12 was for GPS_DELAY, but now removed, fixed delay
     // of 1 was found to be the best choice
 
-#if AP_AHRS_NAVEKF_AVAILABLE
+#if AP_AHRS_NAVEKF_AVAILABLE && !AHRS_EKF_USE_ALWAYS
     // @Param: EKF_USE
     // @DisplayName: Use NavEKF Kalman filter for attitude and position estimation
-    // @Description: This controls whether the NavEKF Kalman filter is used for attitude and position estimation
-    // @Values: 0:Disabled,1:Enabled
+    // @Description: This controls whether the NavEKF Kalman filter is used for attitude and position estimation and whether fallback to the DCM algorithm is allowed
+    // @Values: 0:Disabled,1:Enabled, 2:Enabled - No Fallback
     // @User: Advanced
     AP_GROUPINFO("EKF_USE",  13, AP_AHRS, _ekf_use, AHRS_EKF_USE_DEFAULT),
 #endif
@@ -251,7 +255,27 @@ void AP_AHRS::update_trig(void)
 
     // sin_roll, sin_pitch
     _sin_pitch = -temp.c.x;
-    _sin_roll = temp.c.y / _cos_pitch;
+    if (is_zero(_cos_pitch)) {
+        _sin_roll = sinf(roll);
+    } else {
+        _sin_roll = temp.c.y / _cos_pitch;
+    }
+
+    // sanity checks
+    if (yaw_vector.is_inf() || yaw_vector.is_nan()) {
+        yaw_vector.x = 0.0f;
+        yaw_vector.y = 0.0f;
+        _sin_yaw = 0.0f;
+        _cos_yaw = 1.0f;
+    }
+
+    if (isinf(_cos_roll) || isnan(_cos_roll)) {
+        _cos_roll = cosf(roll);
+    }
+
+    if (isinf(_sin_roll) || isnan(_sin_roll)) {
+        _sin_roll = sinf(roll);
+    }
 }
 
 /*

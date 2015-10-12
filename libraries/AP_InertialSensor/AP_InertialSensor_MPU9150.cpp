@@ -25,10 +25,10 @@
      unmaintained 
 */
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 
-#include <AP_Math.h>
+#include <AP_Math/AP_Math.h>
 #include "AP_InertialSensor_MPU9150.h"
 #include <stdio.h>
 #include <unistd.h>
@@ -327,12 +327,8 @@ static struct gyro_state_s st = {
 AP_InertialSensor_MPU9150::AP_InertialSensor_MPU9150(AP_InertialSensor &imu) :
     AP_InertialSensor_Backend(imu),
     _have_sample_available(false),
-    _accel_filter_x(800, 10),
-    _accel_filter_y(800, 10),
-    _accel_filter_z(800, 10),
-    _gyro_filter_x(800, 10),
-    _gyro_filter_y(800, 10),
-    _gyro_filter_z(800, 10)
+    _accel_filter(800, 10),
+    _gyro_filter(800, 10)
 {
 }
 
@@ -354,19 +350,19 @@ AP_InertialSensor_Backend *AP_InertialSensor_MPU9150::detect(AP_InertialSensor &
 }
 
 /*
-  set the filter frequency
+  set the accel filter frequency
  */
-void AP_InertialSensor_MPU9150::_set_filter_frequency(uint8_t filter_hz)
+void AP_InertialSensor_MPU9150::_set_accel_filter_frequency(uint8_t filter_hz)
 {
-    if (filter_hz == 0)
-        filter_hz = _default_filter_hz;
+    _accel_filter.set_cutoff_frequency(800, filter_hz);
+}
 
-    _accel_filter_x.set_cutoff_frequency(800, filter_hz);
-    _accel_filter_y.set_cutoff_frequency(800, filter_hz);
-    _accel_filter_z.set_cutoff_frequency(800, filter_hz);
-    _gyro_filter_x.set_cutoff_frequency(800, filter_hz);
-    _gyro_filter_y.set_cutoff_frequency(800, filter_hz);
-    _gyro_filter_z.set_cutoff_frequency(800, filter_hz);
+/*
+  set the gyro filter frequency
+ */
+void AP_InertialSensor_MPU9150::_set_gyro_filter_frequency(uint8_t filter_hz)
+{
+    _gyro_filter.set_cutoff_frequency(800, filter_hz);
 }
 
 /**
@@ -376,8 +372,6 @@ bool AP_InertialSensor_MPU9150::_init_sensor(void)
 {
     // Sensors pushed to the FIFO.
     uint8_t sensors;
-
-    _default_filter_hz = _default_filter();
 
     // get pointer to i2c bus semaphore
     AP_HAL::Semaphore* i2c_sem = hal.i2c->get_semaphore();
@@ -406,9 +400,9 @@ bool AP_InertialSensor_MPU9150::_init_sensor(void)
         hal.console->printf("AP_InertialSensor_MPU9150: couldn't read the registers to determine revision");
         goto failed;
     }    
-    uint8_t rev;
-    rev = ((buff[5] & 0x01) << 2) | ((buff[3] & 0x01) << 1) |
-        (buff[1] & 0x01);
+    // uint8_t rev;
+    // rev = ((buff[5] & 0x01) << 2) | ((buff[3] & 0x01) << 1) |
+    //     (buff[1] & 0x01);
 
     // Do not do the checking, for some reason the MPU-9150 returns 0
     // if (rev) {        
@@ -438,8 +432,8 @@ bool AP_InertialSensor_MPU9150::_init_sensor(void)
         hal.console->printf("AP_InertialSensor_MPU9150: mpu_set_accel_fsr.\n");
         goto failed;    
     }
-    // Set digital low pass filter (using _default_filter_hz, 20 for 100 Hz of sample rate)
-    if (mpu_set_lpf(_default_filter_hz)){
+    // Set digital low pass filter to 256Hz (DLPF disabled)
+    if (mpu_set_lpf(256)) {
         hal.console->printf("AP_InertialSensor_MPU9150: mpu_set_lpf.\n");
         goto failed;    
     }
@@ -464,8 +458,9 @@ bool AP_InertialSensor_MPU9150::_init_sensor(void)
 
     mpu_set_sensors(sensors);
 
-    // Set the filter frecuency (_mpu6000_filter configured to the default value, check AP_InertialSensor.cpp)
-    _set_filter_frequency(_imu.get_filter());
+    // Set the filter frecuency
+    _set_accel_filter_frequency(_accel_filter_cutoff());
+    _set_gyro_filter_frequency(_gyro_filter_cutoff());
 
     // give back i2c semaphore
     i2c_sem->give();
@@ -474,7 +469,7 @@ bool AP_InertialSensor_MPU9150::_init_sensor(void)
     _accel_instance = _imu.register_accel();
 
     // start the timer process to read samples    
-    hal.scheduler->register_timer_process(AP_HAL_MEMBERPROC(&AP_InertialSensor_MPU9150::_accumulate));
+    hal.scheduler->register_timer_process(FUNCTOR_BIND_MEMBER(&AP_InertialSensor_MPU9150::_accumulate, void));
 
     return true;
 
@@ -558,7 +553,11 @@ int16_t AP_InertialSensor_MPU9150::mpu_set_lpf(uint16_t lpf)
 {
     uint8_t data;
 
-    if (lpf >= 188){
+    if (lpf == 0) {
+        data = INV_FILTER_256HZ_NOLPF2;
+    } else if (lpf >= 256){
+        data = INV_FILTER_256HZ_NOLPF2;
+    } else if (lpf >= 188){
         data = INV_FILTER_188HZ;
     }
     else if (lpf >= 98){
@@ -955,7 +954,7 @@ int16_t AP_InertialSensor_MPU9150::mpu_set_int_latched(uint8_t enable)
  *  @param[out] more        Number of remaining packets.
  *  @return     0 if successful.
  */
-int16_t AP_InertialSensor_MPU9150::mpu_read_fifo(int16_t *gyro, int16_t *accel, uint32_t timestamp,
+int16_t AP_InertialSensor_MPU9150::mpu_read_fifo(int16_t *gyro, int16_t *accel, uint32_t *timestamp,
         uint8_t *sensors, uint8_t *more)
 {
     /* Assumes maximum packet size is gyro (6) + accel (6). */
@@ -985,7 +984,7 @@ int16_t AP_InertialSensor_MPU9150::mpu_read_fifo(int16_t *gyro, int16_t *accel, 
         }
     }
 
-    timestamp = hal.scheduler->millis();    
+    *timestamp = hal.scheduler->millis();    
     // read the data
     hal.i2c->readRegisters(st.hw->addr, st.reg->fifo_r_w, packet_size, data);
     more[0] = fifo_count / packet_size - 1;
@@ -1060,6 +1059,8 @@ void AP_InertialSensor_MPU9150::_accumulate(void)
 
     // read the samples
     for (uint16_t i=0; i< fifo_count; i++) {        
+        Vector3f accel, gyro;
+
         // read the data
         // TODO check whether it's possible to read all the packages in a single call
         hal.i2c->readRegisters(st.hw->addr, st.reg->fifo_r_w, packet_size, data);
@@ -1087,15 +1088,17 @@ void AP_InertialSensor_MPU9150::_accumulate(void)
 
         // TODO Revisit why AP_InertialSensor_L3G4200D uses a minus sign in the y and z component. Maybe this
         //  is because the sensor is placed in the bottom side of the board?
-        _accel_filtered = Vector3f(
-            _accel_filter_x.apply(accel_x), 
-            _accel_filter_y.apply(accel_y), 
-            _accel_filter_z.apply(accel_z));
-        
-        _gyro_filtered = Vector3f(
-            _gyro_filter_x.apply(gyro_x), 
-            _gyro_filter_y.apply(gyro_y), 
-            _gyro_filter_z.apply(gyro_z));
+
+        accel = Vector3f(accel_x, accel_y, accel_z);
+        accel *= MPU9150_ACCEL_SCALE_2G;
+        _rotate_and_correct_accel(_accel_instance, accel);
+        _notify_new_accel_raw_sample(_accel_instance, accel);
+        _accel_filtered = _accel_filter.apply(accel);
+
+        gyro = Vector3f(gyro_x, gyro_y, gyro_z);
+        gyro *= MPU9150_GYRO_SCALE_2000;
+        _rotate_and_correct_gyro(_gyro_instance, gyro);
+        _gyro_filtered = _gyro_filter.apply(gyro);
 
         _have_sample_available = true;
     }
@@ -1114,15 +1117,17 @@ bool AP_InertialSensor_MPU9150::update(void)
     _have_sample_available = false;
     hal.scheduler->resume_timer_procs();
 
-    accel *= MPU9150_ACCEL_SCALE_2G;
-    _rotate_and_offset_accel(_accel_instance, accel);
+    _publish_accel(_accel_instance, accel);
+    _publish_gyro(_gyro_instance, gyro);
 
-    gyro *= MPU9150_GYRO_SCALE_2000;
-    _rotate_and_offset_gyro(_gyro_instance, gyro);
+    if (_last_accel_filter_hz != _accel_filter_cutoff()) {
+        _set_accel_filter_frequency(_accel_filter_cutoff());
+        _last_accel_filter_hz = _accel_filter_cutoff();
+    }
 
-    if (_last_filter_hz != _imu.get_filter()) {
-        _set_filter_frequency(_imu.get_filter());
-        _last_filter_hz = _imu.get_filter();
+    if (_last_gyro_filter_hz != _gyro_filter_cutoff()) {
+        _set_gyro_filter_frequency(_gyro_filter_cutoff());
+        _last_gyro_filter_hz = _gyro_filter_cutoff();
     }
 
     return true;

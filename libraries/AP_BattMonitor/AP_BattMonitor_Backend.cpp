@@ -14,8 +14,8 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <AP_Common.h>
-#include <AP_HAL.h>
+#include <AP_Common/AP_Common.h>
+#include <AP_HAL/AP_HAL.h>
 #include "AP_BattMonitor.h"
 #include "AP_BattMonitor_Backend.h"
 
@@ -25,12 +25,24 @@
 */
 AP_BattMonitor_Backend::AP_BattMonitor_Backend(AP_BattMonitor &mon, uint8_t instance, AP_BattMonitor::BattMonitor_State &mon_state) :
         _mon(mon),
-        _state(mon_state)
+        _state(mon_state),
+        _instance(instance)
 {
 }
 
 /// capacity_remaining_pct - returns the % battery capacity remaining (0 ~ 100)
 uint8_t AP_BattMonitor_Backend::capacity_remaining_pct() const
 {
-    return (100.0f * (_mon._pack_capacity[_state.instance] - _state.current_total_mah) / _mon._pack_capacity[_state.instance]);
+    float mah_remaining = _mon._pack_capacity[_state.instance] - _state.current_total_mah;
+    if ( _mon._pack_capacity[_state.instance] > 10 ) { // a very very small battery
+        return (100 * (mah_remaining) / _mon._pack_capacity[_state.instance]);
+    } else {
+        return 0;
+    }
+}
+
+/// set capacity for this instance
+void AP_BattMonitor_Backend::set_capacity(uint32_t capacity)
+{
+    _mon._pack_capacity[_instance] = capacity;
 }

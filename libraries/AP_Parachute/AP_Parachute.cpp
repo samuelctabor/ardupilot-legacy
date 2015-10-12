@@ -1,11 +1,11 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-#include <AP_Parachute.h>
-#include <AP_Relay.h>
-#include <AP_Math.h>
-#include <RC_Channel.h>
-#include <AP_Notify.h>
-#include <AP_HAL.h>
+#include "AP_Parachute.h"
+#include <AP_Relay/AP_Relay.h>
+#include <AP_Math/AP_Math.h>
+#include <RC_Channel/RC_Channel.h>
+#include <AP_Notify/AP_Notify.h>
+#include <AP_HAL/AP_HAL.h>
 
 extern const AP_HAL::HAL& hal;
 
@@ -44,7 +44,7 @@ const AP_Param::GroupInfo AP_Parachute::var_info[] PROGMEM = {
     AP_GROUPINFO("SERVO_OFF", 3, AP_Parachute, _servo_off_pwm, AP_PARACHUTE_SERVO_OFF_PWM_DEFAULT),
 
     // @Param: ALT_MIN
-    // @DisplayName: Parachute min altitude in cm above home
+    // @DisplayName: Parachute min altitude in meters above home
     // @Description: Parachute min altitude above home.  Parachute will not be released below this altitude.  0 to disable alt check.
     // @Range: 0 32000
     // @Units: Meters

@@ -18,8 +18,8 @@
 #ifndef __AP_HAL_BOARDLED_H__
 #define __AP_HAL_BOARDLED_H__
 
-#include <AP_Common.h>
-#include <AP_HAL.h>
+#include <AP_Common/AP_Common.h>
+#include <AP_HAL/AP_HAL.h>
 #include "NotifyDevice.h"
 
 #define HIGH 1
@@ -55,7 +55,7 @@
  # define HAL_GPIO_C_LED_PIN        16
  # define HAL_GPIO_LED_ON           LOW
  # define HAL_GPIO_LED_OFF          HIGH
-#elif CONFIG_HAL_BOARD == HAL_BOARD_LINUX || CONFIG_HAL_BOARD == HAL_BOARD_AVR_SITL
+#elif CONFIG_HAL_BOARD == HAL_BOARD_LINUX || CONFIG_HAL_BOARD == HAL_BOARD_SITL
  # define HAL_GPIO_A_LED_PIN        61
  # define HAL_GPIO_B_LED_PIN        48
  # define HAL_GPIO_C_LED_PIN        117

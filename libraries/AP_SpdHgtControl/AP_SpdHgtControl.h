@@ -13,9 +13,9 @@
 #ifndef AP_SPDHGTCONTROL_H
 #define AP_SPDHGTCONTROL_H
 
-#include <AP_Common.h>
-#include <AP_Param.h>
-#include <DataFlash.h>
+#include <AP_Common/AP_Common.h>
+#include <AP_Param/AP_Param.h>
+#include <DataFlash/DataFlash.h>
 
 class AP_SpdHgtControl {
 public:
@@ -32,7 +32,8 @@ public:
 		FLIGHT_NORMAL        = 1,
 		FLIGHT_TAKEOFF       = 2,
 		FLIGHT_LAND_APPROACH = 3,
-		FLIGHT_LAND_FINAL    = 4
+        FLIGHT_LAND_FINAL    = 4,
+        FLIGHT_LAND_ABORT    = 5
 	};
 
 	// Update of the pitch and throttle demands

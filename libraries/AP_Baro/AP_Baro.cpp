@@ -19,10 +19,10 @@
  *
  */
 
-#include <AP_Math.h>
-#include <AP_Common.h>
-#include <AP_Baro.h>
-#include <AP_HAL.h>
+#include <AP_Math/AP_Math.h>
+#include <AP_Common/AP_Common.h>
+#include "AP_Baro.h"
+#include <AP_HAL/AP_HAL.h>
 
 extern const AP_HAL::HAL& hal;
 
@@ -45,14 +45,22 @@ const AP_Param::GroupInfo AP_Baro::var_info[] PROGMEM = {
     // @Increment: 1
     AP_GROUPINFO("TEMP", 3, AP_Baro, sensors[0].ground_temperature, 0),
 
+    // index 4 reserved for old AP_Int8 version in legacy FRAM
+    //AP_GROUPINFO("ALT_OFFSET", 4, AP_Baro, _alt_offset, 0),
+
     // @Param: ALT_OFFSET
     // @DisplayName: altitude offset
     // @Description: altitude offset in meters added to barometric altitude. This is used to allow for automatic adjustment of the base barometric altitude by a ground station equipped with a barometer. The value is added to the barometric altitude read by the aircraft. It is automatically reset to 0 when the barometer is calibrated on each reboot or when a preflight calibration is performed.
     // @Units: meters
-    // @Range: -128 127
-    // @Increment: 1
-    AP_GROUPINFO("ALT_OFFSET", 4, AP_Baro, _alt_offset, 0),
+    // @Increment: 0.1
+    AP_GROUPINFO("ALT_OFFSET", 5, AP_Baro, _alt_offset, 0),
 
+    // @Param: PRIMARY
+    // @DisplayName: Primary barometer
+    // @Description: This selects which barometer will be the primary if multiple barometers are found
+    // @Values: 0:FirstBaro,1:2ndBaro,2:3rdBaro
+    AP_GROUPINFO("PRIMARY", 6, AP_Baro, _primary_baro, 0),
+    
     AP_GROUPEND
 };
 
@@ -99,6 +107,7 @@ void AP_Baro::calibrate()
                 hal.scheduler->panic(PSTR("PANIC: AP_Baro::read unsuccessful "
                         "for more than 500ms in AP_Baro::calibrate [2]\r\n"));
             }
+            hal.scheduler->delay(10);
         } while (!healthy());
         hal.scheduler->delay(100);
     }
@@ -172,16 +181,15 @@ void AP_Baro::update_calibration()
 float AP_Baro::get_altitude_difference(float base_pressure, float pressure) const
 {
     float ret;
+    float temp    = get_ground_temperature() + 273.15f;
 #if HAL_CPU_CLASS <= HAL_CPU_CLASS_16
     // on slower CPUs use a less exact, but faster, calculation
     float scaling = base_pressure / pressure;
-    float temp    = get_calibration_temperature() + 273.15f;
     ret = logf(scaling) * temp * 29.271267f;
 #else
     // on faster CPUs use a more exact calculation
     float scaling = pressure / base_pressure;
-    float temp    = get_calibration_temperature() + 273.15f;
-
+    
     // This is an exact calculation that is within +-2.5m of the standard atmosphere tables
     // in the troposphere (up to 11,000 m amsl).
 	ret = 153.8462f * temp * (1.0f - expf(0.190259f * logf(scaling)));
@@ -196,7 +204,7 @@ float AP_Baro::get_altitude_difference(float base_pressure, float pressure) cons
 float AP_Baro::get_EAS2TAS(void)
 {
     float altitude = get_altitude();
-    if ((fabsf(altitude - _last_altitude_EAS2TAS) < 100.0f) && (_EAS2TAS != 0.0f)) {
+    if ((fabsf(altitude - _last_altitude_EAS2TAS) < 100.0f) && !is_zero(_EAS2TAS)) {
         // not enough change to require re-calculating
         return _EAS2TAS;
     }
@@ -205,6 +213,17 @@ float AP_Baro::get_EAS2TAS(void)
     _EAS2TAS = safe_sqrt(1.225f / ((float)get_pressure() / (287.26f * tempK)));
     _last_altitude_EAS2TAS = altitude;
     return _EAS2TAS;
+}
+
+// return air density / sea level density - decreases as altitude climbs
+float AP_Baro::get_air_density_ratio(void)
+{
+    float eas2tas = get_EAS2TAS();
+    if (eas2tas > 0.0f) {
+        return 1.0f/(sq(get_EAS2TAS()));
+    } else {
+        return 1.0f;
+    }
 }
 
 // return current climb_rate estimeate relative to time that calibrate()
@@ -254,6 +273,12 @@ float AP_Baro::get_calibration_temperature(uint8_t instance) const
  */
 void AP_Baro::init(void)
 {
+    if (_hil_mode) {
+        drivers[0] = new AP_Baro_HIL(*this);
+        _num_drivers = 1;
+        return;
+    }
+
 #if HAL_BARO_DEFAULT == HAL_BARO_PX4 || HAL_BARO_DEFAULT == HAL_BARO_VRBRAIN
     drivers[0] = new AP_Baro_PX4(*this);
     _num_drivers = 1;
@@ -265,9 +290,9 @@ void AP_Baro::init(void)
         drivers[0] = new AP_Baro_BMP085(*this);
         _num_drivers = 1;
     }
-#elif HAL_BARO_DEFAULT == HAL_BARO_MS5611
+#elif HAL_BARO_DEFAULT == HAL_BARO_MS5611 && HAL_BARO_MS5611_I2C_BUS == 0
     {
-        drivers[0] = new AP_Baro_MS5611(*this, new AP_SerialBus_I2C(MS5611_I2C_ADDR), false);
+        drivers[0] = new AP_Baro_MS5611(*this, new AP_SerialBus_I2C(hal.i2c, HAL_BARO_MS5611_I2C_ADDR), false);
         _num_drivers = 1;
     }
 #elif HAL_BARO_DEFAULT == HAL_BARO_MS5611_SPI
@@ -276,6 +301,11 @@ void AP_Baro::init(void)
                                         new AP_SerialBus_SPI(AP_HAL::SPIDevice_MS5611, 
                                                              AP_HAL::SPIDeviceDriver::SPI_SPEED_HIGH),
                                         true);
+        _num_drivers = 1;
+    }
+#elif HAL_BARO_DEFAULT == HAL_BARO_MS5607 && HAL_BARO_MS5607_I2C_BUS == 1
+    {
+        drivers[0] = new AP_Baro_MS5607(*this, new AP_SerialBus_I2C(hal.i2c1, HAL_BARO_MS5607_I2C_ADDR), true);
         _num_drivers = 1;
     }
 #endif    
@@ -300,32 +330,41 @@ void AP_Baro::update(void)
     // last 0.5 seconds
     uint32_t now = hal.scheduler->millis();
     for (uint8_t i=0; i<_num_sensors; i++) {
-        sensors[i].healthy = (now - sensors[i].last_update_ms < 500) && sensors[i].pressure != 0;
+        sensors[i].healthy = (now - sensors[i].last_update_ms < 500) && !is_zero(sensors[i].pressure);
     }
 
     for (uint8_t i=0; i<_num_sensors; i++) {
         if (sensors[i].healthy) {
             // update altitude calculation
-            if (sensors[i].ground_pressure == 0) {
+            if (is_zero(sensors[i].ground_pressure)) {
                 sensors[i].ground_pressure = sensors[i].pressure;
             }
-            sensors[i].altitude = get_altitude_difference(sensors[i].ground_pressure, sensors[i].pressure);
+            float altitude = get_altitude_difference(sensors[i].ground_pressure, sensors[i].pressure);
             // sanity check altitude
-            sensors[i].alt_ok = !(isnan(sensors[i].altitude) || isinf(sensors[i].altitude));
-        }
-    }
-
-    // choose primary sensor
-    _primary = 0;
-    for (uint8_t i=0; i<_num_sensors; i++) {
-        if (healthy(i)) {
-            _primary = i;
-            break;
+            sensors[i].alt_ok = !(isnan(altitude) || isinf(altitude));
+            if (sensors[i].alt_ok) {
+                sensors[i].altitude = altitude + _alt_offset;
+            }
         }
     }
 
     // ensure the climb rate filter is updated
-    _climb_rate_filter.update(get_altitude(), get_last_update());
+    if (healthy()) {
+        _climb_rate_filter.update(get_altitude(), get_last_update());
+    }
+
+    // choose primary sensor
+    if (_primary_baro >= 0 && _primary_baro < _num_sensors && healthy(_primary_baro)) {
+        _primary = _primary_baro;
+    } else {
+        _primary = 0;
+        for (uint8_t i=0; i<_num_sensors; i++) {
+            if (healthy(i)) {
+                _primary = i;
+                break;
+            }
+        }
+    }
 }
 
 /*

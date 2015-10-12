@@ -20,7 +20,7 @@
   Heavily modified by Andrew Tridgell
 */
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "AP_Baro.h"
 
 extern const AP_HAL::HAL& hal;
@@ -76,10 +76,11 @@ uint32_t AP_SerialBus_SPI::read_24bits(uint8_t reg)
     return (((uint32_t)rx[1])<<16) | (((uint32_t)rx[2])<<8) | ((uint32_t)rx[3]);
 }
 
-void AP_SerialBus_SPI::write(uint8_t reg)
+bool AP_SerialBus_SPI::write(uint8_t reg)
 {
     uint8_t tx[1] = { reg };
     _spi->transaction(tx, NULL, 1);
+    return true;
 }
 
 bool AP_SerialBus_SPI::sem_take_blocking() 
@@ -99,7 +100,8 @@ void AP_SerialBus_SPI::sem_give()
 
 
 /// I2C SerialBus
-AP_SerialBus_I2C::AP_SerialBus_I2C(uint8_t addr) :
+AP_SerialBus_I2C::AP_SerialBus_I2C(AP_HAL::I2CDriver *i2c, uint8_t addr) :
+    _i2c(i2c),
     _addr(addr),
     _i2c_sem(NULL) 
 {
@@ -107,7 +109,7 @@ AP_SerialBus_I2C::AP_SerialBus_I2C(uint8_t addr) :
 
 void AP_SerialBus_I2C::init()
 {
-    _i2c_sem = hal.i2c->get_semaphore();
+    _i2c_sem = _i2c->get_semaphore();
     if (_i2c_sem == NULL) {
         hal.scheduler->panic(PSTR("AP_SerialBus_I2C did not get valid I2C semaphore!"));
     }
@@ -116,7 +118,7 @@ void AP_SerialBus_I2C::init()
 uint16_t AP_SerialBus_I2C::read_16bits(uint8_t reg)
 {
     uint8_t buf[2];
-    if (hal.i2c->readRegisters(_addr, reg, sizeof(buf), buf) == 0) {
+    if (_i2c->readRegisters(_addr, reg, sizeof(buf), buf) == 0) {
         return (((uint16_t)(buf[0]) << 8) | buf[1]);
     }
     return 0;
@@ -125,15 +127,15 @@ uint16_t AP_SerialBus_I2C::read_16bits(uint8_t reg)
 uint32_t AP_SerialBus_I2C::read_24bits(uint8_t reg)
 {
     uint8_t buf[3];
-    if (hal.i2c->readRegisters(_addr, reg, sizeof(buf), buf) == 0) {
+    if (_i2c->readRegisters(_addr, reg, sizeof(buf), buf) == 0) {
         return (((uint32_t)buf[0]) << 16) | (((uint32_t)buf[1]) << 8) | buf[2];
     }
     return 0;
 }
 
-void AP_SerialBus_I2C::write(uint8_t reg)
+bool AP_SerialBus_I2C::write(uint8_t reg)
 {
-    hal.i2c->write(_addr, 1, &reg);
+    return _i2c->write(_addr, 1, &reg) == 0;
 }
 
 bool AP_SerialBus_I2C::sem_take_blocking() 
@@ -154,18 +156,20 @@ void AP_SerialBus_I2C::sem_give()
 /*
   constructor
  */
-AP_Baro_MS5611::AP_Baro_MS5611(AP_Baro &baro, AP_SerialBus *serial, bool use_timer) :
+AP_Baro_MS56XX::AP_Baro_MS56XX(AP_Baro &baro, AP_SerialBus *serial, bool use_timer) :
     AP_Baro_Backend(baro),
     _serial(serial),
     _updated(false),
     _state(0),
     _last_timer(0),
-    _use_timer(use_timer)
+    _use_timer(use_timer),
+    _D1(0.0f),
+    _D2(0.0f)
 {
     _instance = _frontend.register_sensor();
     _serial->init();
     if (!_serial->sem_take_blocking()){
-        hal.scheduler->panic(PSTR("PANIC: AP_Baro_MS5611: failed to take serial semaphore for init"));
+        hal.scheduler->panic(PSTR("PANIC: AP_Baro_MS56XX: failed to take serial semaphore for init"));
     }
 
     _serial->write(CMD_MS5611_RESET);
@@ -173,12 +177,12 @@ AP_Baro_MS5611::AP_Baro_MS5611(AP_Baro &baro, AP_SerialBus *serial, bool use_tim
 
     // We read the factory calibration
     // The on-chip CRC is not used
-    C1 = _serial->read_16bits(CMD_MS5611_PROM_C1);
-    C2 = _serial->read_16bits(CMD_MS5611_PROM_C2);
-    C3 = _serial->read_16bits(CMD_MS5611_PROM_C3);
-    C4 = _serial->read_16bits(CMD_MS5611_PROM_C4);
-    C5 = _serial->read_16bits(CMD_MS5611_PROM_C5);
-    C6 = _serial->read_16bits(CMD_MS5611_PROM_C6);
+    _C1 = _serial->read_16bits(CMD_MS5611_PROM_C1);
+    _C2 = _serial->read_16bits(CMD_MS5611_PROM_C2);
+    _C3 = _serial->read_16bits(CMD_MS5611_PROM_C3);
+    _C4 = _serial->read_16bits(CMD_MS5611_PROM_C4);
+    _C5 = _serial->read_16bits(CMD_MS5611_PROM_C5);
+    _C6 = _serial->read_16bits(CMD_MS5611_PROM_C6);
 
     if (!_check_crc()) {
         hal.scheduler->panic(PSTR("Bad CRC on MS5611"));
@@ -197,21 +201,21 @@ AP_Baro_MS5611::AP_Baro_MS5611(AP_Baro &baro, AP_SerialBus *serial, bool use_tim
     _serial->sem_give();
 
     if (_use_timer) {
-        hal.scheduler->register_timer_process( AP_HAL_MEMBERPROC(&AP_Baro_MS5611::_timer));
+        hal.scheduler->register_timer_process(FUNCTOR_BIND_MEMBER(&AP_Baro_MS56XX::_timer, void));
     }
 }
 
 /**
  * MS5611 crc4 method based on PX4Firmware code
  */
-bool AP_Baro_MS5611::_check_crc(void)
+bool AP_Baro_MS56XX::_check_crc(void)
 {
     int16_t cnt;
     uint16_t n_rem;
     uint16_t crc_read;
     uint8_t n_bit;
     uint16_t n_prom[8] = { _serial->read_16bits(CMD_MS5611_PROM_Setup),
-                           C1, C2, C3, C4, C5, C6,
+                           _C1, _C2, _C3, _C4, _C5, _C6,
                            _serial->read_16bits(CMD_MS5611_PROM_CRC) };
     n_rem = 0x00;
 
@@ -254,7 +258,7 @@ bool AP_Baro_MS5611::_check_crc(void)
   We read one time Temperature (state=1) and then 4 times Pressure (states 2-5)
   temperature does not change so quickly...
 */
-void AP_Baro_MS5611::_timer(void)
+void AP_Baro_MS56XX::_timer(void)
 {
     // Throttle read rate to 100hz maximum.
     if (hal.scheduler->micros() - _last_timer < 10000) {
@@ -278,9 +282,15 @@ void AP_Baro_MS5611::_timer(void)
                 _s_D2 >>= 1;
                 _d2_count = 16;
             }
+
+            if (_serial->write(CMD_CONVERT_D1_OSR4096)) {      // Command to read pressure
+                _state++;
+            }
+        } else {
+            /* if read fails, re-initiate a temperature read command or we are
+             * stuck */
+            _serial->write(CMD_CONVERT_D2_OSR4096);
         }
-        _state++;
-        _serial->write(CMD_CONVERT_D1_OSR4096);      // Command to read pressure
     } else {
         uint32_t d1 = _serial->read_24bits(0);;
         if (d1 != 0) {
@@ -297,13 +307,20 @@ void AP_Baro_MS5611::_timer(void)
             }
             // Now a new reading exists
             _updated = true;
-        }
-        _state++;
-        if (_state == 5) {
-            _serial->write(CMD_CONVERT_D2_OSR4096); // Command to read temperature
-            _state = 0;
+
+            if (_state == 4) {
+                if (_serial->write(CMD_CONVERT_D2_OSR4096)) { // Command to read temperature
+                    _state = 0;
+                }
+            } else {
+                if (_serial->write(CMD_CONVERT_D1_OSR4096)) { // Command to read pressure
+                    _state++;
+                }
+            }
         } else {
-            _serial->write(CMD_CONVERT_D1_OSR4096); // Command to read pressure
+            /* if read fails, re-initiate a pressure read command or we are
+             * stuck */
+            _serial->write(CMD_CONVERT_D1_OSR4096);
         }
     }
 
@@ -311,7 +328,7 @@ void AP_Baro_MS5611::_timer(void)
     _serial->sem_give();
 }
 
-void AP_Baro_MS5611::update()
+void AP_Baro_MS56XX::update()
 {
     if (!_use_timer) {
         // if we're not using the timer then accumulate one more time
@@ -336,13 +353,18 @@ void AP_Baro_MS5611::update()
     hal.scheduler->resume_timer_procs();
     
     if (d1count != 0) {
-        D1 = ((float)sD1) / d1count;
+        _D1 = ((float)sD1) / d1count;
     }
     if (d2count != 0) {
-        D2 = ((float)sD2) / d2count;
+        _D2 = ((float)sD2) / d2count;
     }
     _calculate();
 }
+
+/* MS5611 class */
+AP_Baro_MS5611::AP_Baro_MS5611(AP_Baro &baro, AP_SerialBus *serial, bool use_timer)
+    :AP_Baro_MS56XX(baro, serial, use_timer)
+{}
 
 // Calculate Temperature and compensated Pressure in real units (Celsius degrees*100, mbar*100).
 void AP_Baro_MS5611::_calculate()
@@ -359,10 +381,10 @@ void AP_Baro_MS5611::_calculate()
     // as this is much faster on an AVR2560, and also allows
     // us to take advantage of the averaging of D1 and D1 over
     // multiple samples, giving us more precision
-    dT = D2-(((uint32_t)C5)<<8);
-    TEMP = (dT * C6)/8388608;
-    OFF = C2 * 65536.0f + (C4 * dT) / 128;
-    SENS = C1 * 32768.0f + (C3 * dT) / 256;
+    dT = _D2-(((uint32_t)_C5)<<8);
+    TEMP = (dT * _C6)/8388608;
+    OFF = _C2 * 65536.0f + (_C4 * dT) / 128;
+    SENS = _C1 * 32768.0f + (_C3 * dT) / 256;
 
     if (TEMP < 0) {
         // second order temperature compensation when under 20 degrees C
@@ -375,7 +397,47 @@ void AP_Baro_MS5611::_calculate()
         SENS = SENS - SENS2;
     }
 
-    float pressure = (D1*SENS/2097152 - OFF)/32768;
+    float pressure = (_D1*SENS/2097152 - OFF)/32768;
+    float temperature = (TEMP + 2000) * 0.01f;
+    _copy_to_frontend(_instance, pressure, temperature);
+}
+
+/* MS5607 Class */
+AP_Baro_MS5607::AP_Baro_MS5607(AP_Baro &baro, AP_SerialBus *serial, bool use_timer)
+    :AP_Baro_MS56XX(baro, serial, use_timer)
+{}
+// Calculate Temperature and compensated Pressure in real units (Celsius degrees*100, mbar*100).
+void AP_Baro_MS5607::_calculate()
+{
+    float dT;
+    float TEMP;
+    float OFF;
+    float SENS;
+
+    // Formulas from manufacturer datasheet
+    // sub -20c temperature compensation is not included
+
+    // we do the calculations using floating point
+    // as this is much faster on an AVR2560, and also allows
+    // us to take advantage of the averaging of D1 and D1 over
+    // multiple samples, giving us more precision
+    dT = _D2-(((uint32_t)_C5)<<8);
+    TEMP = (dT * _C6)/8388608;
+    OFF = _C2 * 131072.0f + (_C4 * dT) / 64;
+    SENS = _C1 * 65536.0f + (_C3 * dT) / 128;
+
+    if (TEMP < 0) {
+        // second order temperature compensation when under 20 degrees C
+        float T2 = (dT*dT) / 0x80000000;
+        float Aux = TEMP*TEMP;
+        float OFF2 = 61.0f*Aux/16.0f;
+        float SENS2 = 2.0f*Aux;
+        TEMP = TEMP - T2;
+        OFF = OFF - OFF2;
+        SENS = SENS - SENS2;
+    }
+
+    float pressure = (_D1*SENS/2097152 - OFF)/32768;
     float temperature = (TEMP + 2000) * 0.01f;
     _copy_to_frontend(_instance, pressure, temperature);
 }
@@ -385,7 +447,7 @@ void AP_Baro_MS5611::_calculate()
   avoid conflicts on the semaphore from calling it in a timer, which
   conflicts with the compass driver use of I2C
 */
-void AP_Baro_MS5611::accumulate(void)
+void AP_Baro_MS56XX::accumulate(void)
 {
     if (!_use_timer) {
         // the timer isn't being called as a timer, so we need to call

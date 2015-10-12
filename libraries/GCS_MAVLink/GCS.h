@@ -7,14 +7,21 @@
 #ifndef __GCS_H
 #define __GCS_H
 
-#include <AP_HAL.h>
-#include <AP_Common.h>
-#include <GCS_MAVLink.h>
-#include <DataFlash.h>
-#include <AP_Mission.h>
-#include "../AP_BattMonitor/AP_BattMonitor.h"
+#include <AP_HAL/AP_HAL.h>
+#include <AP_Common/AP_Common.h>
+#include "GCS_MAVLink.h"
+#include <DataFlash/DataFlash.h>
+#include <AP_Mission/AP_Mission.h>
+#include <AP_BattMonitor/AP_BattMonitor.h>
 #include <stdint.h>
-#include <MAVLink_routing.h>
+#include "MAVLink_routing.h"
+#include <AP_SerialManager/AP_SerialManager.h>
+#include <AP_Mount/AP_Mount.h>
+
+// check if a message will fit in the payload space available
+#define HAVE_PAYLOAD_SPACE(chan, id) (comm_get_txspace(chan) >= MAVLINK_NUM_NON_PAYLOAD_BYTES+MAVLINK_MSG_ID_ ## id ## _LEN)
+#define CHECK_PAYLOAD_SIZE(id) if (comm_get_txspace(chan) < MAVLINK_NUM_NON_PAYLOAD_BYTES+MAVLINK_MSG_ID_ ## id ## _LEN) return false
+#define CHECK_PAYLOAD_SIZE2(id) if (!HAVE_PAYLOAD_SPACE(chan, id)) return false
 
 //  GCS Message ID's
 /// NOTE: to ensure we never block on sending MAVLink messages
@@ -53,6 +60,15 @@ enum ap_message {
     MSG_CAMERA_FEEDBACK,
     MSG_MOUNT_STATUS,
     MSG_OPTICAL_FLOW,
+    MSG_GIMBAL_REPORT,
+    MSG_MAG_CAL_PROGRESS,
+    MSG_MAG_CAL_REPORT,
+    MSG_EKF_STATUS_REPORT,
+    MSG_LOCAL_POSITION,
+    MSG_PID_TUNING,
+    MSG_VIBRATION,
+    MSG_RPM,
+    MSG_MISSION_ITEM_REACHED,
     MSG_RETRY_DEFERRED // this must be last
 };
 
@@ -65,18 +81,22 @@ class GCS_MAVLINK
 {
 public:
     GCS_MAVLINK();
-    void        update(void (*run_cli)(AP_HAL::UARTDriver *));
-    void        init(AP_HAL::UARTDriver *port);
-    void        setup_uart(AP_HAL::UARTDriver *port, uint32_t baudrate, uint16_t rxS, uint16_t txS);
+    FUNCTOR_TYPEDEF(run_cli_fn, void, AP_HAL::UARTDriver*);
+    void        update(run_cli_fn run_cli);
+    void        init(AP_HAL::UARTDriver *port, mavlink_channel_t mav_chan);
+    void        setup_uart(const AP_SerialManager& serial_manager, AP_SerialManager::SerialProtocol protocol, uint8_t instance);
     void        send_message(enum ap_message id);
-    void        send_text(gcs_severity severity, const char *str);
-    void        send_text_P(gcs_severity severity, const prog_char_t *str);
+    void        send_text(MAV_SEVERITY severity, const char *str);
+    void        send_text_P(MAV_SEVERITY severity, const prog_char_t *str);
     void        data_stream_send(void);
     void        queued_param_send();
     void        queued_waypoint_send();
     void        set_snoop(void (*_msg_snoop)(const mavlink_message_t* msg)) {
         msg_snoop = _msg_snoop;
     }
+
+    // accessor for uart
+    AP_HAL::UARTDriver *get_uart() { return _port; }
 
     static const struct AP_Param::GroupInfo        var_info[];
 
@@ -112,6 +132,9 @@ public:
     // last time we got a non-zero RSSI from RADIO_STATUS
     static uint32_t last_radio_status_remrssi_ms;
 
+    // mission item index to be sent on queued msg, delayed or not
+    uint16_t mission_item_reached_index = AP_MISSION_CMD_INDEX_NONE;
+
     // common send functions
     void send_meminfo(void);
     void send_power_status(void);
@@ -127,6 +150,9 @@ public:
 #if AP_AHRS_NAVEKF_AVAILABLE
     void send_opticalflow(AP_AHRS_NavEKF &ahrs, const OpticalFlow &optflow);
 #endif
+    void send_autopilot_version(uint8_t major_version, uint8_t minor_version, uint8_t patch_version, uint8_t version_type) const;
+    void send_local_position(const AP_AHRS &ahrs) const;
+    void send_vibration(const AP_InertialSensor &ins) const;
 
     // return a bitmap of active channels. Used by libraries to loop
     // over active channels to send to all active channels    
@@ -137,7 +163,19 @@ public:
       connections. This function is static so it can be called from
       any library
     */
-    static void send_statustext_all(const prog_char_t *msg);
+    static void send_statustext_all(MAV_SEVERITY severity, const prog_char_t *fmt, ...);
+
+    /*
+      send a MAVLink message to all components with this vehicle's system id
+      This is a no-op if no routes to components have been learned
+    */
+    static void send_to_components(const mavlink_message_t* msg) { routing.send_to_components(msg); }
+
+    /*
+      search for a component in the routing table with given mav_type and retrieve it's sysid, compid and channel
+      returns if a matching component is found
+     */
+    static bool find_by_mavtype(uint8_t mav_type, uint8_t &sysid, uint8_t &compid, mavlink_channel_t &channel) { return routing.find_by_mavtype(mav_type, sysid, compid, channel); }
 
 private:
     void        handleMessage(mavlink_message_t * msg);
@@ -179,10 +217,8 @@ private:
     mavlink_channel_t           chan;
     uint16_t                    packet_drops;
 
-#if CLI_ENABLED == ENABLED
     // this allows us to detect the user wanting the CLI to start
     uint8_t        crlf_count;
-#endif
 
     // waypoints
     uint16_t        waypoint_request_i; // request index
@@ -271,7 +307,7 @@ private:
     void handle_mission_count(AP_Mission &mission, mavlink_message_t *msg);
     void handle_mission_clear_all(AP_Mission &mission, mavlink_message_t *msg);
     void handle_mission_write_partial_list(AP_Mission &mission, mavlink_message_t *msg);
-    void handle_mission_item(mavlink_message_t *msg, AP_Mission &mission);
+    bool handle_mission_item(mavlink_message_t *msg, AP_Mission &mission);
 
     void handle_request_data_stream(mavlink_message_t *msg, bool save);
     void handle_param_request_list(mavlink_message_t *msg);
@@ -280,7 +316,11 @@ private:
     void handle_radio_status(mavlink_message_t *msg, DataFlash_Class &dataflash, bool log_radio);
     void handle_serial_control(mavlink_message_t *msg, AP_GPS &gps);
     void lock_channel(mavlink_channel_t chan, bool lock);
-    void handle_set_mode(mavlink_message_t* msg, bool (*set_mode)(uint8_t mode));
+    FUNCTOR_TYPEDEF(set_mode_fn, bool, uint8_t);
+    void handle_set_mode(mavlink_message_t* msg, set_mode_fn set_mode);
+    void handle_gimbal_report(AP_Mount &mount, mavlink_message_t *msg) const;
+
+    void handle_gps_inject(const mavlink_message_t *msg, AP_GPS &gps);
 
     // return true if this channel has hardware flow control
     bool have_flow_control(void);

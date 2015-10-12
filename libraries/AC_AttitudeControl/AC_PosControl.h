@@ -2,26 +2,26 @@
 #ifndef AC_POSCONTROL_H
 #define AC_POSCONTROL_H
 
-#include <AP_Common.h>
-#include <AP_Param.h>
-#include <AP_Math.h>
-#include <AC_PID.h>             // PID library
-#include <AC_P.h>               // P library
-#include <AP_InertialNav.h>     // Inertial Navigation library
-#include <AC_AttitudeControl.h> // Attitude control library
-#include <AP_Motors.h>          // motors library
-#include <AP_Vehicle.h>         // common vehicle parameters
+#include <AP_Common/AP_Common.h>
+#include <AP_Param/AP_Param.h>
+#include <AP_Math/AP_Math.h>
+#include <AC_PID/AC_PID.h>             // PID library
+#include <AC_PID/AC_PI_2D.h>           // PID library (2-axis)
+#include <AC_PID/AC_P.h>               // P library
+#include <AP_InertialNav/AP_InertialNav.h>     // Inertial Navigation library
+#include "AC_AttitudeControl.h" // Attitude control library
+#include <AP_Motors/AP_Motors.h>          // motors library
+#include <AP_Vehicle/AP_Vehicle.h>         // common vehicle parameters
 
 
 // position controller default definitions
-#define POSCONTROL_THROTTLE_HOVER               450.0f  // default throttle required to maintain hover
+#define POSCONTROL_THROTTLE_HOVER               500.0f  // default throttle required to maintain hover
 #define POSCONTROL_ACCELERATION_MIN             50.0f   // minimum horizontal acceleration in cm/s/s - used for sanity checking acceleration in leash length calculation
 #define POSCONTROL_ACCEL_XY                     100.0f  // default horizontal acceleration in cm/s/s.  This is overwritten by waypoint and loiter controllers
 #define POSCONTROL_ACCEL_XY_MAX                 980.0f  // max horizontal acceleration in cm/s/s that the position velocity controller will ask from the lower accel controller
 #define POSCONTROL_STOPPING_DIST_Z_MAX          200.0f  // max stopping distance vertically   
                                                         // should be 1.5 times larger than POSCONTROL_ACCELERATION.
                                                         // max acceleration = max lean angle * 980 * pi / 180.  i.e. 23deg * 980 * 3.141 / 180 = 393 cm/s/s
-#define POSCONTROL_TAKEOFF_JUMP_CM                0.0f  // during take-off altitude target is set to current altitude + this value
 
 #define POSCONTROL_SPEED                        500.0f  // default horizontal speed in cm/s
 #define POSCONTROL_SPEED_DOWN                  -150.0f  // default descent rate in cm/s
@@ -35,12 +35,13 @@
 #define POSCONTROL_DT_10HZ                      0.10f   // time difference in seconds for 10hz update rate
 #define POSCONTROL_DT_50HZ                      0.02f   // time difference in seconds for 50hz update rate
 
-#define POSCONTROL_ACTIVE_TIMEOUT_MS            200     // position controller is considered active if it has been called within the past 200ms (0.2 seconds)
+#define POSCONTROL_ACTIVE_TIMEOUT_MS            200     // position controller is considered active if it has been called within the past 0.2 seconds
 
-#define POSCONTROL_ACCEL_Z_DTERM_FILTER         20      // Z axis accel controller's D term filter (in hz)
-
-#define POSCONTROL_VEL_ERROR_CUTOFF_FREQ        4.0     // 4hz low-pass filter on velocity error
-#define POSCONTROL_ACCEL_ERROR_CUTOFF_FREQ      2.0     // 2hz low-pass filter on accel error
+#define POSCONTROL_VEL_ERROR_CUTOFF_FREQ        4.0f    // low-pass filter on velocity error (unit: hz)
+#define POSCONTROL_THROTTLE_CUTOFF_FREQ         2.0f    // low-pass filter on accel error (unit: hz)
+#define POSCONTROL_JERK_LIMIT_CMSSS             1700.0f // jerk limit on horizontal acceleration (unit: m/s/s/s)
+#define POSCONTROL_ACCEL_FILTER_HZ              2.0f    // low-pass filter on acceleration (unit: hz)
+#define POSCONTROL_JERK_RATIO                   1.0f    // Defines the time it takes to reach the requested acceleration
 
 class AC_PosControl
 {
@@ -49,8 +50,15 @@ public:
     /// Constructor
     AC_PosControl(const AP_AHRS& ahrs, const AP_InertialNav& inav,
                   const AP_Motors& motors, AC_AttitudeControl& attitude_control,
-                  AC_P& p_alt_pos, AC_P& p_alt_rate, AC_PID& pid_alt_accel,
-                  AC_P& p_pos_xy, AC_PID& pid_rate_lat, AC_PID& pid_rate_lon);
+                  AC_P& p_pos_z, AC_P& p_vel_z, AC_PID& pid_accel_z,
+                  AC_P& p_pos_xy, AC_PI_2D& pi_vel_xy);
+
+    // xy_mode - specifies behavior of xy position controller
+    enum xy_mode {
+        XY_MODE_POS_ONLY = 0,           // position correction only (i.e. no velocity feed-forward)
+        XY_MODE_POS_LIMITED_AND_VEL_FF, // for loiter - rate-limiting the position correction, velocity feed-forward
+        XY_MODE_POS_AND_VEL_FF          // for velocity controller - unlimied position correction, velocity feed-forward
+    };
 
     ///
     /// initialisation functions
@@ -62,7 +70,7 @@ public:
     float get_dt() const { return _dt; }
 
     /// set_dt_xy - sets time delta in seconds for horizontal controller (i.e. 50hz = 0.02)
-    void set_dt_xy(float dt_xy) { _dt_xy = dt_xy; }
+    void set_dt_xy(float dt_xy);
     float get_dt_xy() const { return _dt_xy; }
 
     ///
@@ -70,8 +78,8 @@ public:
     ///
 
     /// set_alt_max - sets maximum altitude above home in cm
-    /// set to zero to disable limit
-    /// To-Do: update this intermittantly from main code after checking if fence is enabled/disabled
+    ///   only enforced when set_alt_target_from_climb_rate is used
+    ///   set to zero to disable limit
     void set_alt_max(float alt) { _alt_max = alt; }
 
     /// set_speed_z - sets maximum climb and descent rates
@@ -84,6 +92,9 @@ public:
 
     /// get_speed_down - accessors for current down speed in cm/s.  Will be a negative number
     float get_speed_down() const { return _speed_down_cms; }
+
+    /// get_vel_target_z - returns current vertical speed in cm/s
+    float get_vel_target_z() const { return _vel_target.z; }
 
     /// set_accel_z - set vertical acceleration in cm/s/s
     ///     leash length will be recalculated the next time update_z_controller() is called
@@ -113,10 +124,18 @@ public:
     ///     actual position target will be moved no faster than the speed_down and speed_up
     ///     target will also be stopped if the motors hit their limits or leash length is exceeded
     ///     set force_descend to true during landing to allow target to move low enough to slow the motors
-    void set_alt_target_from_climb_rate(float climb_rate_cms, float dt, bool force_descend = false);
+    void set_alt_target_from_climb_rate(float climb_rate_cms, float dt, bool force_descend);
+
+    /// add_takeoff_climb_rate - adjusts alt target up or down using a climb rate in cm/s
+    ///     should be called continuously (with dt set to be the expected time between calls)
+    ///     almost no checks are performed on the input
+    void add_takeoff_climb_rate(float climb_rate_cms, float dt);
 
     /// set_alt_target_to_current_alt - set altitude target to current altitude
     void set_alt_target_to_current_alt() { _pos_target.z = _inav.get_altitude(); }
+
+    /// relax_alt_hold_controllers - set all desired and targets to measured
+    void relax_alt_hold_controllers(float throttle_setting);
 
     /// get_alt_target, get_desired_alt - get desired altitude (in cm above home) from loiter or wp controller which should be fed into throttle controller
     /// To-Do: remove one of the two functions below
@@ -128,7 +147,7 @@ public:
     /// set_target_to_stopping_point_z - sets altitude target to reasonable stopping altitude in cm above home
     void set_target_to_stopping_point_z();
 
-    /// get_stopping_point_z - sets stopping_point.z to a reasonable stopping altitude in cm above home
+    /// get_stopping_point_z - calculates stopping point based on current position, velocity, vehicle acceleration
     void get_stopping_point_z(Vector3f& stopping_point) const;
 
     /// init_takeoff - initialises target altitude if we are taking off
@@ -143,9 +162,6 @@ public:
     // get_leash_down_z, get_leash_up_z - returns vertical leash lengths in cm
     float get_leash_down_z() const { return _leash_down_z; }
     float get_leash_up_z() const { return _leash_up_z; }
-
-    /// althold_kP - returns altitude hold position control PID's kP gain
-    float althold_kP() const { return _p_alt_pos.kP(); }
 
     ///
     /// xy position controller
@@ -203,7 +219,7 @@ public:
 
     /// update_xy_controller - run the horizontal position controller - should be called at 100hz or higher
     ///     when use_desired_velocity is true the desired velocity (i.e. feed forward) is incorporated at the pos_to_rate step
-    void update_xy_controller(bool use_desired_velocity, float ekfNavVelGainScaler);
+    void update_xy_controller(xy_mode mode, float ekfNavVelGainScaler, bool use_althold_lean_angle);
 
     /// set_target_to_stopping_point_xy - sets horizontal target to reasonable stopping position in cm from home
     void set_target_to_stopping_point_xy();
@@ -258,15 +274,15 @@ private:
 
     // general purpose flags
     struct poscontrol_flags {
-            uint8_t recalc_leash_z  : 1;    // 1 if we should recalculate the z axis leash length
-            uint8_t recalc_leash_xy : 1;    // 1 if we should recalculate the xy axis leash length
-            uint8_t slow_cpu        : 1;    // 1 if we are running on a slow_cpu machine.  xy position control is broken up into multiple steps
-            uint8_t reset_desired_vel_to_pos: 1;    // 1 if we should reset the rate_to_accel_xy step
-            uint8_t reset_rate_to_accel_xy  : 1;    // 1 if we should reset the rate_to_accel_xy step
-            uint8_t reset_rate_to_accel_z   : 1;    // 1 if we should reset the rate_to_accel_z step
-            uint8_t reset_accel_to_throttle : 1;    // 1 if we should reset the accel_to_throttle step of the z-axis controller
-            uint8_t freeze_ff_xy    : 1;    // 1 use to freeze feed forward during step updates
-            uint8_t freeze_ff_z     : 1;    // 1 use to freeze feed forward during step updates
+            uint16_t recalc_leash_z     : 1;    // 1 if we should recalculate the z axis leash length
+            uint16_t recalc_leash_xy    : 1;    // 1 if we should recalculate the xy axis leash length
+            uint16_t reset_desired_vel_to_pos   : 1;    // 1 if we should reset the rate_to_accel_xy step
+            uint16_t reset_rate_to_accel_xy     : 1;    // 1 if we should reset the rate_to_accel_xy step
+            uint16_t reset_accel_to_lean_xy     : 1;    // 1 if we should reset the accel to lean angle step
+            uint16_t reset_rate_to_accel_z      : 1;    // 1 if we should reset the rate_to_accel_z step
+            uint16_t reset_accel_to_throttle    : 1;    // 1 if we should reset the accel_to_throttle step of the z-axis controller
+            uint16_t freeze_ff_xy       : 1;    // 1 use to freeze feed forward during step updates
+            uint16_t freeze_ff_z        : 1;    // 1 use to freeze feed forward during step updates
     } _flags;
 
     // limit flags structure
@@ -307,7 +323,7 @@ private:
     ///     when use_desired_rate is set to true:
     ///         desired velocity (_vel_desired) is combined into final target velocity and
     ///         velocity due to position error is reduce to a maximum of 1m/s
-    void pos_to_rate_xy(bool use_desired_rate, float dt, float ekfNavVelGainScaler);
+    void pos_to_rate_xy(xy_mode mode, float dt, float ekfNavVelGainScaler);
 
     /// rate_to_accel_xy - horizontal desired rate to desired acceleration
     ///    converts desired velocities in lat/lon directions to accelerations in lat/lon frame
@@ -315,7 +331,7 @@ private:
 
     /// accel_to_lean_angles - horizontal desired acceleration to lean angles
     ///    converts desired accelerations provided in lat/lon frame to roll/pitch angles
-    void accel_to_lean_angles(float dt_xy, float ekfNavVelGainScaler);
+    void accel_to_lean_angles(float dt_xy, float ekfNavVelGainScaler, bool use_althold_lean_angle);
 
     /// calc_leash_length - calculates the horizontal leash length given a maximum speed, acceleration and position kP gain
     float calc_leash_length(float speed_cms, float accel_cms, float kP) const;
@@ -326,26 +342,27 @@ private:
     const AP_Motors&            _motors;
     AC_AttitudeControl&         _attitude_control;
 
-    // references to pid controllers and motors
-    AC_P&       _p_alt_pos;
-    AC_P&       _p_alt_rate;
-    AC_PID&     _pid_alt_accel;
+    // references to pid controllers
+    AC_P&       _p_pos_z;
+    AC_P&       _p_vel_z;
+    AC_PID&     _pid_accel_z;
     AC_P&	    _p_pos_xy;
-    AC_PID&	    _pid_rate_lat;
-    AC_PID&	    _pid_rate_lon;
+    AC_PI_2D&   _pi_vel_xy;
 
     // parameters
-    AP_Float    _throttle_hover;        // estimated throttle required to maintain a level hover
+    AP_Float    _accel_xy_filt_hz;      // XY acceleration filter cutoff frequency
 
     // internal variables
     float       _dt;                    // time difference (in seconds) between calls from the main program
     float       _dt_xy;                 // time difference (in seconds) between update_xy_controller and update_vel_controller_xyz calls
     uint32_t    _last_update_xy_ms;     // system time of last update_xy_controller call
     uint32_t    _last_update_z_ms;      // system time of last update_z_controller call
+    float       _throttle_hover;        // estimated throttle required to maintain a level hover
     float       _speed_down_cms;        // max descent rate in cm/s
     float       _speed_up_cms;          // max climb rate in cm/s
     float       _speed_cms;             // max horizontal speed in cm/s
     float       _accel_z_cms;           // max vertical acceleration in cm/s/s
+    float       _accel_last_z_cms;      // max vertical acceleration in cm/s/s
     float       _accel_cms;             // max horizontal acceleration in cm/s/s
     float       _leash;                 // horizontal leash length in cm.  target will never be further than this distance from the vehicle
     float       _leash_down_z;          // vertical leash down in cm.  target will never be further than this distance below the vehicle
@@ -368,6 +385,8 @@ private:
     float       _alt_max;               // max altitude - should be updated from the main code with altitude limit from fence
     float       _distance_to_target;    // distance to position target - for reporting only
     LowPassFilterFloat _vel_error_filter;   // low-pass-filter on z-axis velocity error
-    LowPassFilterFloat _accel_error_filter; // low-pass-filter on z-axis accelerometer error
+
+    Vector2f    _accel_target_jerk_limited; // acceleration target jerk limited to 100deg/s/s
+    LowPassFilterVector2f _accel_target_filter; // acceleration target filter
 };
 #endif	// AC_POSCONTROL_H

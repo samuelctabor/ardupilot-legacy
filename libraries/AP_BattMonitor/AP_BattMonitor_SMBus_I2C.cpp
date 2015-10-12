@@ -1,13 +1,13 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
-#include <AP_HAL.h>
-#include <AP_Common.h>
-#include <AP_Math.h>
+#include <AP_HAL/AP_HAL.h>
+#include <AP_Common/AP_Common.h>
+#include <AP_Math/AP_Math.h>
 #include "AP_BattMonitor.h"
 #include "AP_BattMonitor_SMBus_I2C.h"
 
 extern const AP_HAL::HAL& hal;
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD != HAL_BOARD_PX4
 
@@ -43,12 +43,18 @@ void AP_BattMonitor_SMBus_I2C::read()
     if (read_word(BATTMONITOR_SMBUS_VOLTAGE, data)) {
         _state.voltage = (float)data / 1000.0f;
         _state.last_time_micros = tnow;
+        _state.healthy = true;
     }
 
     // read current
     if (read_block(BATTMONITOR_SMBUS_CURRENT, buff, 4, false) == 4) {
         _state.current_amps = (float)((int32_t)((uint32_t)buff[3]<<24 | (uint32_t)buff[2]<<16 | (uint32_t)buff[1]<<8 | (uint32_t)buff[0])) / 1000.0f;
         _state.last_time_micros = tnow;
+    }
+
+    // timeout after 5 seconds
+    if ((tnow - _state.last_time_micros) > AP_BATTMONITOR_SMBUS_TIMEOUT_MICROS) {
+        _state.healthy = false;
     }
 }
 
@@ -61,7 +67,6 @@ bool AP_BattMonitor_SMBus_I2C::read_word(uint8_t reg, uint16_t& data) const
 
     // take i2c bus semaphore
     if (!i2c_sem->take_nonblocking()) {
-        i2c_sem->give();
         return false;
     }
 
@@ -100,7 +105,6 @@ uint8_t AP_BattMonitor_SMBus_I2C::read_block(uint8_t reg, uint8_t* data, uint8_t
 
     // take i2c bus semaphore
     if (!i2c_sem->take_nonblocking()) {
-        i2c_sem->give();
         return 0;
     }
 
@@ -124,7 +128,6 @@ uint8_t AP_BattMonitor_SMBus_I2C::read_block(uint8_t reg, uint8_t* data, uint8_t
     // check PEC
     uint8_t pec = get_PEC(BATTMONITOR_SMBUS_I2C_ADDR, reg, true, buff, bufflen+1);
     if (pec != buff[bufflen+1]) {
-        i2c_sem->give();
         return 0;
     }
 

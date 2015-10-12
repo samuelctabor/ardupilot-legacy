@@ -66,14 +66,14 @@ build_devrelease() {
         }
 
         mkdir -p $SUBDIR || return 1
-        make configure || return 1
         make px4-clean || return 1
         make clean || return 1
         make "$make_target" || return 1
         /bin/cp "$RELEASE_FILE" "$SUBDIR" || return 1
         git log -1 > "$SUBDIR/git-version.txt" || return 1
         [ -f APM_Config.h ] && {
-            version=$(grep 'define.THISFIRMWARE' *.pde 2> /dev/null | cut -d'"' -f2)
+            shopt -s nullglob
+            version=$(grep 'define.THISFIRMWARE' *.pde *.h 2> /dev/null | cut -d'"' -f2)
             echo >> "$SUBDIR/git-version.txt"
             echo "APMVERSION: $version" >> "$SUBDIR/git-version.txt"
         }

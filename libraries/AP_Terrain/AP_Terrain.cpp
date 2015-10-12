@@ -14,12 +14,12 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <AP_HAL.h>
-#include <AP_Common.h>
-#include <AP_Math.h>
-#include <GCS_MAVLink.h>
-#include <GCS.h>
-#include <DataFlash.h>
+#include <AP_HAL/AP_HAL.h>
+#include <AP_Common/AP_Common.h>
+#include <AP_Math/AP_Math.h>
+#include <GCS_MAVLink/GCS_MAVLink.h>
+#include <GCS_MAVLink/GCS.h>
+#include <DataFlash/DataFlash.h>
 #include "AP_Terrain.h"
 
 #if AP_TERRAIN_AVAILABLE
@@ -58,7 +58,6 @@ AP_Terrain::AP_Terrain(AP_AHRS &_ahrs, const AP_Mission &_mission, const AP_Rall
     mission(_mission),
     rally(_rally),
     disk_io_state(DiskIoIdle),
-    last_request_time_ms(0),
     fd(-1),
     timer_setup(false),
     file_lat_degrees(0),
@@ -72,6 +71,7 @@ AP_Terrain::AP_Terrain(AP_AHRS &_ahrs, const AP_Mission &_mission, const AP_Rall
     AP_Param::setup_object_defaults(this, var_info);
     memset(&home_loc, 0, sizeof(home_loc));
     memset(&disk_block, 0, sizeof(disk_block));
+    memset(last_request_time_ms, 0, sizeof(last_request_time_ms));
 }
 
 /*
@@ -312,6 +312,13 @@ void AP_Terrain::update(void)
 
     // check for pending rally data
     update_rally_data();
+
+    // update capabilities
+    if (enable) {
+        hal.util->set_capabilities(MAV_PROTOCOL_CAPABILITY_TERRAIN);
+    } else {
+        hal.util->clear_capabilities(MAV_PROTOCOL_CAPABILITY_TERRAIN);
+    }
 }
 
 /*
@@ -358,11 +365,11 @@ void AP_Terrain::log_terrain_data(DataFlash_Class &dataflash)
 
     struct log_TERRAIN pkt = {
         LOG_PACKET_HEADER_INIT(LOG_TERRAIN_MSG),
-        time_ms        : hal.scheduler->millis(),
+        time_us        : hal.scheduler->micros64(),
         status         : (uint8_t)status(),
         lat            : loc.lat,
         lng            : loc.lng,
-        spacing        : grid_spacing,
+        spacing        : (uint16_t)grid_spacing,
         terrain_height : terrain_height,
         current_height : current_height,
         pending        : pending,

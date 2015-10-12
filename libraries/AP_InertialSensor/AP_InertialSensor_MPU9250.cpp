@@ -16,16 +16,16 @@
     -- Coded by Victor Mayoral Vilches --
 */
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 
 #include "AP_InertialSensor_MPU9250.h"
-#include "../AP_HAL_Linux/GPIO.h"
+#include <AP_HAL_Linux/GPIO.h>
 
 extern const AP_HAL::HAL& hal;
 
-// MPU6000 accelerometer scaling
-#define MPU9250_ACCEL_SCALE_1G    (GRAVITY_MSS / 4096.0f)
+// MPU9250 accelerometer scaling for 16g range
+#define MPU9250_ACCEL_SCALE_1G    (GRAVITY_MSS / 2048.0f)
 
 #define MPUREG_XG_OFFS_TC                               0x00
 #define MPUREG_YG_OFFS_TC                               0x01
@@ -144,6 +144,8 @@ extern const AP_HAL::HAL& hal;
 #define MPUREG_FIFO_COUNTL                              0x73
 #define MPUREG_FIFO_R_W                                 0x74
 #define MPUREG_WHOAMI                                   0x75
+#define MPUREG_WHOAMI_MPU9250                           0x71
+#define MPUREG_WHOAMI_MPU9255                           0x73
 
 
 // Configuration bits MPU 3000, MPU 6000 and MPU9250
@@ -156,6 +158,9 @@ extern const AP_HAL::HAL& hal;
 #define BITS_DLPF_CFG_5HZ                               0x06
 #define BITS_DLPF_CFG_2100HZ_NOLPF              0x07
 #define BITS_DLPF_CFG_MASK                              0x07
+
+#define DEFAULT_SMPLRT_DIV MPUREG_SMPLRT_1000HZ
+#define DEFAULT_SAMPLE_RATE (1000 / (DEFAULT_SMPLRT_DIV + 1))
 
 /*
  *  PS-MPU-9250A-00.pdf, page 8, lists LSB sensitivity of
@@ -173,15 +178,22 @@ extern const AP_HAL::HAL& hal;
 
 AP_InertialSensor_MPU9250::AP_InertialSensor_MPU9250(AP_InertialSensor &imu) :
 	AP_InertialSensor_Backend(imu),
-    _last_filter_hz(-1),
+    _last_accel_filter_hz(-1),
+    _last_gyro_filter_hz(-1),
     _shared_data_idx(0),
-    _accel_filter_x(1000, 15),
-    _accel_filter_y(1000, 15),
-    _accel_filter_z(1000, 15),
-    _gyro_filter_x(1000, 15),
-    _gyro_filter_y(1000, 15),
-    _gyro_filter_z(1000, 15),
-    _have_sample_available(false)
+    _accel_filter(DEFAULT_SAMPLE_RATE, 15),
+    _gyro_filter(DEFAULT_SAMPLE_RATE, 15),
+    _have_sample_available(false),
+#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXF
+    _default_rotation(ROTATION_ROLL_180_YAW_270)
+#elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_NAVIO
+    /* no rotation needed */
+    _default_rotation(ROTATION_NONE)
+#elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BBBMINI
+    _default_rotation(ROTATION_NONE)
+#else /* rotate for bbone default (and other boards) */
+    _default_rotation(ROTATION_ROLL_180_YAW_90)
+#endif
 {
 }
 
@@ -203,6 +215,87 @@ AP_InertialSensor_Backend *AP_InertialSensor_MPU9250::detect(AP_InertialSensor &
     return sensor;
 }
 
+bool AP_InertialSensor_MPU9250::initialize_driver_state() {
+    AP_HAL::SPIDeviceDriver *spi = hal.spi->device(AP_HAL::SPIDevice_MPU9250);
+    if (!spi)
+        return false;
+
+    AP_HAL::SPIDeviceDriver::State state = spi->get_state();
+    if (state == AP_HAL::SPIDeviceDriver::State::FAILED)
+        return false;
+    if (state == AP_HAL::SPIDeviceDriver::State::RUNNING)
+        return true;
+
+    /* First time trying the initialization: if it fails from now on we will
+     * set the device state to State::Failed so we don't try again if another
+     * driver asks it */
+    spi->set_state(AP_HAL::SPIDeviceDriver::State::FAILED);
+
+    uint8_t whoami = _register_read(spi, MPUREG_WHOAMI);
+    if (whoami != MPUREG_WHOAMI_MPU9250 && whoami != MPUREG_WHOAMI_MPU9255) {
+        hal.console->printf("MPU9250: unexpected WHOAMI 0x%x\n", (unsigned)whoami);
+        goto fail_whoami;
+    }
+
+    // initially run the bus at low speed
+    spi->set_bus_speed(AP_HAL::SPIDeviceDriver::SPI_SPEED_LOW);
+
+    // Chip reset
+    uint8_t tries;
+    for (tries = 0; tries < 5; tries++) {
+        uint8_t user_ctrl = _register_read(spi, MPUREG_USER_CTRL);
+
+        /* First disable the master I2C to avoid hanging the slaves on the
+         * aulixiliar I2C bus */
+        if (user_ctrl & BIT_USER_CTRL_I2C_MST_EN) {
+            _register_write(spi, MPUREG_USER_CTRL, user_ctrl & ~BIT_USER_CTRL_I2C_MST_EN);
+            hal.scheduler->delay(10);
+        }
+
+        // reset device
+        _register_write(spi, MPUREG_PWR_MGMT_1, BIT_PWR_MGMT_1_DEVICE_RESET);
+        hal.scheduler->delay(100);
+
+        // disable I2C as recommended by the datasheet
+        _register_write(spi, MPUREG_USER_CTRL, BIT_USER_CTRL_I2C_IF_DIS);
+
+        // Wake up device and select GyroZ clock. Note that the
+        // MPU9250 starts up in sleep mode, and it can take some time
+        // for it to come out of sleep
+        _register_write(spi, MPUREG_PWR_MGMT_1, BIT_PWR_MGMT_1_CLK_ZGYRO);
+        hal.scheduler->delay(5);
+
+        // check it has woken up
+        if (_register_read(spi, MPUREG_PWR_MGMT_1) == BIT_PWR_MGMT_1_CLK_ZGYRO) {
+            break;
+        }
+
+        hal.scheduler->delay(10);
+        uint8_t status = _register_read(spi, MPUREG_INT_STATUS);
+        if ((status & BIT_RAW_RDY_INT) != 0) {
+            break;
+        }
+#if MPU9250_DEBUG
+        _dump_registers(_spi);
+#endif
+    }
+
+    if (tries == 5) {
+        hal.console->println_P(PSTR("Failed to boot MPU9250 5 times"));
+        goto fail_tries;
+    }
+
+    spi->set_state(AP_HAL::SPIDeviceDriver::State::RUNNING);
+
+    return true;
+
+fail_tries:
+fail_whoami:
+    spi->set_bus_speed(AP_HAL::SPIDeviceDriver::SPI_SPEED_HIGH);
+
+    return false;
+}
+
 /*
   initialise the sensor
  */
@@ -211,40 +304,8 @@ bool AP_InertialSensor_MPU9250::_init_sensor(void)
     _spi = hal.spi->device(AP_HAL::SPIDevice_MPU9250);
     _spi_sem = _spi->get_semaphore();
 
-    // we need to suspend timers to prevent other SPI drivers grabbing
-    // the bus while we do the long initialisation
-    hal.scheduler->suspend_timer_procs();
-
-    uint8_t whoami = _register_read(MPUREG_WHOAMI);
-    if (whoami != 0x71) {
-        // TODO: we should probably accept multiple chip
-        // revisions. This is the one on the PXF
-        hal.console->printf("MPU9250: unexpected WHOAMI 0x%x\n", (unsigned)whoami);
+    if (!_hardware_init())
         return false;
-    }
-
-    uint8_t tries = 0;
-    do {
-        bool success = _hardware_init();
-        if (success) {
-            hal.scheduler->delay(10);
-            if (!_spi_sem->take(100)) {
-                hal.console->printf("MPU9250: Unable to get semaphore");
-                return false;
-            }
-            uint8_t status = _register_read(MPUREG_INT_STATUS);
-            if ((status & BIT_RAW_RDY_INT) != 0) {
-                _spi_sem->give();
-                break;
-            }
-            _spi_sem->give();
-        }
-        if (tries++ > 5) {
-            return false;
-        }
-    } while (1);
-
-    hal.scheduler->resume_timer_procs();
 
     _gyro_instance = _imu.register_gyro();
     _accel_instance = _imu.register_accel();
@@ -252,10 +313,12 @@ bool AP_InertialSensor_MPU9250::_init_sensor(void)
     _product_id = AP_PRODUCT_ID_MPU9250;
 
     // start the timer process to read samples
-    hal.scheduler->register_timer_process(AP_HAL_MEMBERPROC(&AP_InertialSensor_MPU9250::_poll_data));
+    hal.scheduler->register_timer_process(FUNCTOR_BIND_MEMBER(&AP_InertialSensor_MPU9250::_poll_data, void));
+
+    _set_accel_sample_rate(_accel_instance, DEFAULT_SAMPLE_RATE);
 
 #if MPU9250_DEBUG
-    _dump_registers();
+    _dump_registers(_spi);
 #endif
     return true;
 }
@@ -272,33 +335,17 @@ bool AP_InertialSensor_MPU9250::update( void )
 
     _have_sample_available = false;
 
-    accel *= MPU9250_ACCEL_SCALE_1G;
-    gyro *= GYRO_SCALE;
+    _publish_gyro(_gyro_instance, gyro);
+    _publish_accel(_accel_instance, accel);
 
-    // rotate for bbone default
-    accel.rotate(ROTATION_ROLL_180_YAW_90);
-    gyro.rotate(ROTATION_ROLL_180_YAW_90);
+    if (_last_accel_filter_hz != _accel_filter_cutoff()) {
+        _set_accel_filter(_accel_filter_cutoff());
+        _last_accel_filter_hz = _accel_filter_cutoff();
+    }
 
-#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXF
-    // PXF has an additional YAW 180
-    accel.rotate(ROTATION_YAW_180);
-    gyro.rotate(ROTATION_YAW_180);
-#elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_NAVIO
-    // NavIO has different orientation, assuming RaspberryPi is right
-    // way up, and PWM pins on NavIO are at the back of the aircraft
-    accel.rotate(ROTATION_ROLL_180_YAW_90);
-    gyro.rotate(ROTATION_ROLL_180_YAW_90);
-#elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BBBMINI
-    accel.rotate(ROTATION_ROLL_180);
-    gyro.rotate(ROTATION_ROLL_180);
-#endif
-
-    _rotate_and_offset_gyro(_gyro_instance, gyro);
-    _rotate_and_offset_accel(_accel_instance, accel);
-
-    if (_last_filter_hz != _imu.get_filter()) {
-        _set_filter(_imu.get_filter());
-        _last_filter_hz = _imu.get_filter();
+    if (_last_gyro_filter_hz != _gyro_filter_cutoff()) {
+        _set_gyro_filter(_gyro_filter_cutoff());
+        _last_gyro_filter_hz = _gyro_filter_cutoff();
     }
 
     return true;
@@ -330,28 +377,39 @@ void AP_InertialSensor_MPU9250::_poll_data(void)
  */
 void AP_InertialSensor_MPU9250::_read_data_transaction() 
 {
-    /* one resister address followed by seven 2-byte registers */
+    /* one register address followed by seven 2-byte registers */
     struct PACKED {
         uint8_t cmd;
         uint8_t int_status;
         uint8_t v[14];
     } rx, tx = { cmd : MPUREG_INT_STATUS | 0x80, };
 
+    Vector3f accel, gyro;
+
     _spi->transaction((const uint8_t *)&tx, (uint8_t *)&rx, sizeof(rx));
 
 #define int16_val(v, idx) ((int16_t)(((uint16_t)v[2*idx] << 8) | v[2*idx+1]))
 
-    Vector3f _accel_filtered = Vector3f(_accel_filter_x.apply(int16_val(rx.v, 1)), 
-                                        _accel_filter_y.apply(int16_val(rx.v, 0)), 
-                                        _accel_filter_z.apply(-int16_val(rx.v, 2)));
+    accel = Vector3f(int16_val(rx.v, 1),
+                     int16_val(rx.v, 0),
+                     -int16_val(rx.v, 2));
+    accel *= MPU9250_ACCEL_SCALE_1G;
+    accel.rotate(_default_rotation);
+    _rotate_and_correct_accel(_accel_instance, accel);
+    _notify_new_accel_raw_sample(_accel_instance, accel);
 
-    Vector3f _gyro_filtered = Vector3f(_gyro_filter_x.apply(int16_val(rx.v, 5)), 
-                                       _gyro_filter_y.apply(int16_val(rx.v, 4)), 
-                                       _gyro_filter_z.apply(-int16_val(rx.v, 6)));
+    gyro = Vector3f(int16_val(rx.v, 5),
+                    int16_val(rx.v, 4),
+                    -int16_val(rx.v, 6));
+    gyro *= GYRO_SCALE;
+    gyro.rotate(_default_rotation);
+    _rotate_and_correct_gyro(_gyro_instance, gyro);
+
+
     // update the shared buffer
     uint8_t idx = _shared_data_idx ^ 1;
-    _shared_data[idx]._accel_filtered = _accel_filtered;
-    _shared_data[idx]._gyro_filtered = _gyro_filtered;
+    _shared_data[idx]._accel_filtered = _accel_filter.apply(accel);
+    _shared_data[idx]._gyro_filtered = _gyro_filter.apply(gyro);
     _shared_data_idx = idx;
 
     _have_sample_available = true;
@@ -360,48 +418,58 @@ void AP_InertialSensor_MPU9250::_read_data_transaction()
 /*
   read an 8 bit register
  */
-uint8_t AP_InertialSensor_MPU9250::_register_read( uint8_t reg )
+uint8_t AP_InertialSensor_MPU9250::_register_read(AP_HAL::SPIDeviceDriver *spi,
+                                                  uint8_t reg)
 {
     uint8_t addr = reg | 0x80; // Set most significant bit
-
     uint8_t tx[2];
     uint8_t rx[2];
 
     tx[0] = addr;
     tx[1] = 0;
-    _spi->transaction(tx, rx, 2);
+    spi->transaction(tx, rx, 2);
+
     return rx[1];
 }
 
 /*
   write an 8 bit register
  */
-void AP_InertialSensor_MPU9250::_register_write(uint8_t reg, uint8_t val)
+void AP_InertialSensor_MPU9250::_register_write(AP_HAL::SPIDeviceDriver *spi,
+                                                uint8_t reg, uint8_t val)
 {
     uint8_t tx[2];
     uint8_t rx[2];
 
     tx[0] = reg;
     tx[1] = val;
-    _spi->transaction(tx, rx, 2);
+    spi->transaction(tx, rx, 2);
+}
+
+inline uint8_t AP_InertialSensor_MPU9250::_register_read(uint8_t reg)
+{
+    return _register_read(_spi, reg);
+}
+
+inline void AP_InertialSensor_MPU9250::_register_write(uint8_t reg, uint8_t val)
+{
+    _register_write(_spi, reg, val);
 }
 
 /*
-  set the accel/gyro filter frequency
+  set the accel filter frequency
  */
-void AP_InertialSensor_MPU9250::_set_filter(uint8_t filter_hz)
+void AP_InertialSensor_MPU9250::_set_accel_filter(uint8_t filter_hz)
 {
-    if (filter_hz == 0) {
-        filter_hz = _default_filter_hz;
-    }
+    _accel_filter.set_cutoff_frequency(DEFAULT_SAMPLE_RATE, filter_hz);
+}
 
-    _accel_filter_x.set_cutoff_frequency(1000, filter_hz);
-    _accel_filter_y.set_cutoff_frequency(1000, filter_hz);
-    _accel_filter_z.set_cutoff_frequency(1000, filter_hz);
-
-    _gyro_filter_x.set_cutoff_frequency(1000, filter_hz);
-    _gyro_filter_y.set_cutoff_frequency(1000, filter_hz);
-    _gyro_filter_z.set_cutoff_frequency(1000, filter_hz);    
+/*
+  set the gyro filter frequency
+ */
+void AP_InertialSensor_MPU9250::_set_gyro_filter(uint8_t filter_hz)
+{
+    _gyro_filter.set_cutoff_frequency(DEFAULT_SAMPLE_RATE, filter_hz);
 }
 
 
@@ -410,66 +478,31 @@ void AP_InertialSensor_MPU9250::_set_filter(uint8_t filter_hz)
  */
 bool AP_InertialSensor_MPU9250::_hardware_init(void)
 {
+    // we need to suspend timers to prevent other SPI drivers grabbing
+    // the bus while we do the long initialisation
+    hal.scheduler->suspend_timer_procs();
+
     if (!_spi_sem->take(100)) {
         hal.console->printf("MPU9250: Unable to get semaphore");
         return false;
     }
 
-    // initially run the bus at low speed
-    _spi->set_bus_speed(AP_HAL::SPIDeviceDriver::SPI_SPEED_LOW);
-
-    // Chip reset
-    uint8_t tries;
-    for (tries = 0; tries<5; tries++) {
-#if HAL_COMPASS_DEFAULT != HAL_COMPASS_AK8963 
-        /* Prevent reseting if internal AK8963 is selected, because it may corrupt
-         * AK8963's initialisation.  */
-        _register_write(MPUREG_PWR_MGMT_1, BIT_PWR_MGMT_1_DEVICE_RESET);
-#endif
-        hal.scheduler->delay(100);
-
-        // Wake up device and select GyroZ clock. Note that the
-        // MPU6000 starts up in sleep mode, and it can take some time
-        // for it to come out of sleep
-        _register_write(MPUREG_PWR_MGMT_1, BIT_PWR_MGMT_1_CLK_ZGYRO);
-        hal.scheduler->delay(5);
-
-        // check it has woken up
-        if (_register_read(MPUREG_PWR_MGMT_1) == BIT_PWR_MGMT_1_CLK_ZGYRO) {
-            break;
-        }
-#if MPU9250_DEBUG
-        _dump_registers();
-#endif
-    }
-    if (tries == 5) {
-        hal.console->println_P(PSTR("Failed to boot MPU9250 5 times"));
-        _spi_sem->give();
+    if (!initialize_driver_state())
         return false;
-    }
 
     _register_write(MPUREG_PWR_MGMT_2, 0x00);            // only used for wake-up in accelerometer only low power mode
 
-    // Disable I2C bus (recommended on datasheet)
-#if HAL_COMPASS_DEFAULT != HAL_COMPASS_AK8963 
-     /* Prevent disabling if internal AK8963 is selected. If internal AK8963 is not used
-      * it's ok to disable I2C slaves*/
-    _register_write(MPUREG_USER_CTRL, BIT_USER_CTRL_I2C_IF_DIS);
-#endif
-
-    _default_filter_hz = _default_filter();
-
-    // used a fixed filter of 42Hz on the sensor, then filter using
+    // used no filter of 256Hz on the sensor, then filter using
     // the 2-pole software filter
-    _register_write(MPUREG_CONFIG, BITS_DLPF_CFG_42HZ);
+    _register_write(MPUREG_CONFIG, BITS_DLPF_CFG_256HZ_NOLPF2);
 
     // set sample rate to 1kHz, and use the 2 pole filter to give the
     // desired rate
-    _register_write(MPUREG_SMPLRT_DIV, MPUREG_SMPLRT_1000HZ);
+    _register_write(MPUREG_SMPLRT_DIV, DEFAULT_SMPLRT_DIV);
     _register_write(MPUREG_GYRO_CONFIG, BITS_GYRO_FS_2000DPS);  // Gyro scale 2000º/s
 
-    // RM-MPU-9250A-00.pdf, pg. 15, select accel full scale 8g
-    _register_write(MPUREG_ACCEL_CONFIG,2<<3);
+    // RM-MPU-9250A-00.pdf, pg. 15, select accel full scale 16g
+    _register_write(MPUREG_ACCEL_CONFIG,3<<3);
 
     // configure interrupt to fire when new data arrives
     _register_write(MPUREG_INT_ENABLE, BIT_RAW_RDY_EN);
@@ -484,16 +517,18 @@ bool AP_InertialSensor_MPU9250::_hardware_init(void)
 
     _spi_sem->give();
 
+    hal.scheduler->resume_timer_procs();
+
     return true;
 }
 
 #if MPU9250_DEBUG
 // dump all config registers - used for debug
-void AP_InertialSensor_MPU9250::_dump_registers(void)
+void AP_InertialSensor_MPU9250::_dump_registers(AP_HAL::SPIDeviceDriver *spi)
 {
     hal.console->println_P(PSTR("MPU9250 registers"));
     for (uint8_t reg=0; reg<=126; reg++) {
-        uint8_t v = _register_read(reg);
+        uint8_t v = _register_read(spi, reg);
         hal.console->printf_P(PSTR("%02x:%02x "), (unsigned)reg, (unsigned)v);
         if ((reg - (MPUREG_PRODUCT_ID-1)) % 16 == 0) {
             hal.console->println();

@@ -110,6 +110,7 @@ class BinaryFormat(ctypes.LittleEndianStructure):
         'i': ctypes.c_int32,
         'I': ctypes.c_uint32,
         'f': ctypes.c_float,
+        'd': ctypes.c_double,
         'n': ctypes.c_char * 4,
         'N': ctypes.c_char * 16,
         'Z': ctypes.c_char * 64,
@@ -119,6 +120,8 @@ class BinaryFormat(ctypes.LittleEndianStructure):
         'E': ctypes.c_uint32,# * 100,
         'L': ctypes.c_int32,
         'M': ctypes.c_uint8,
+        'q': ctypes.c_int64,
+        'Q': ctypes.c_uint64,
     }
 
     FIELD_SCALE = {
@@ -145,12 +148,12 @@ class BinaryFormat(ctypes.LittleEndianStructure):
             NAME = self.name,
             MSG = self.type,
             SIZE = self.length,
-            labels = self.labels.split(","),
+            labels = self.labels.split(",") if self.labels else [],
             _pack_ = True)
 
         fieldtypes = [i for i in self.types]
         fieldlabels = self.labels.split(",")
-        if len(fieldtypes) != len(fieldlabels):
+        if self.labels and (len(fieldtypes) != len(fieldlabels)):
             print("Broken FMT message for {} .. ignoring".format(self.name), file=sys.stderr)
             return None
 
@@ -168,7 +171,11 @@ class BinaryFormat(ctypes.LittleEndianStructure):
                 if scale is not None:
                     p = property(lambda x:getattr(x, attributename) / scale) 
                 members[propertyname] = p
-                fields.append((attributename, BinaryFormat.FIELD_FORMAT[format]))
+                try:
+                    fields.append((attributename, BinaryFormat.FIELD_FORMAT[format]))
+                except KeyError:
+                    print('ERROR: Failed to add FMT type: {}, with format: {}'.format(attributename, format))
+                    raise
             createproperty(label, _type)
         members['_fields_'] = fields
 
@@ -470,11 +477,16 @@ class DataflashLog(object):
         # TODO: switch duration calculation to use TimeMS values rather than GPS timestemp
         if "GPS" in self.channels:
             # the GPS time label changed at some point, need to handle both
-            timeLabel = "TimeMS"
-            if timeLabel not in self.channels["GPS"]:
-                timeLabel = "Time"
+            timeLabel = None
+            for i in 'TimeMS','TimeUS','Time':
+                if i in self.channels["GPS"]:
+                    timeLabel = i
+                    break
             firstTimeGPS = self.channels["GPS"][timeLabel].listData[0][1]
             lastTimeGPS  = self.channels["GPS"][timeLabel].listData[-1][1]
+            if timeLabel == 'TimeUS':
+                firstTimeGPS /= 1000
+                lastTimeGPS /= 1000
             self.durationSecs = (lastTimeGPS-firstTimeGPS) / 1000
 
         # TODO: calculate logging rate based on timestamps
@@ -501,7 +513,7 @@ class DataflashLog(object):
             else:
                 self.messages[lineNumber] = e.Message
         elif e.NAME == "MODE":
-            if self.vehicleType == "ArduCopter":
+            if self.vehicleType in ["ArduCopter"]:
                 try:
                     modes = {0:'STABILIZE',
                         1:'ACRO',
@@ -521,7 +533,7 @@ class DataflashLog(object):
                     self.modeChanges[lineNumber] = (modes[int(e.Mode)], e.ThrCrs)
                 except:
                     self.modeChanges[lineNumber] = (e.Mode, e.ThrCrs)
-            elif self.vehicleType == "ArduPlane" or self.vehicleType == "ArduRover":
+            elif self.vehicleType in ["ArduPlane", "APM:Plane", "ArduRover", "APM:Rover", "APM:Copter"]:
                 self.modeChanges[lineNumber] = (e.Mode, e.ModeNum)
             else:
                 raise Exception("Unknown log type for MODE line {} {}".format(self.vehicleType, repr(e)))
@@ -609,7 +621,7 @@ class DataflashLog(object):
         self._formats = {128:BinaryFormat}
         data = bytearray(f.read())
         offset = 0
-        while len(data) > offset:
+        while len(data) > offset + ctypes.sizeof(logheader):
             h = logheader.from_buffer(data, offset)
             if not (h.head1 == 0xa3 and h.head2 == 0x95):
                 if ignoreBadlines == False:

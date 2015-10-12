@@ -7,10 +7,11 @@
    given directory
  */
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if HAL_OS_POSIX_IO
-#include "DataFlash.h"
+#include "DataFlash_File.h"
+
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -20,11 +21,17 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <assert.h>
-#include <AP_Math.h>
+#include <AP_Math/AP_Math.h>
 #include <stdio.h>
 #include <time.h>
 #include <dirent.h>
-#include "../AP_HAL/utility/RingBuffer.h"
+#include <AP_HAL/utility/RingBuffer.h>
+#ifdef __APPLE__
+#include <sys/param.h>
+#include <sys/mount.h>
+#else
+#include <sys/statfs.h>
+#endif
 
 extern const AP_HAL::HAL& hal;
 
@@ -34,9 +41,11 @@ extern const AP_HAL::HAL& hal;
 /*
   constructor
  */
-DataFlash_File::DataFlash_File(const char *log_directory) :
+DataFlash_File::DataFlash_File(DataFlash_Class &front, const char *log_directory) :
+    DataFlash_Backend(front),
     _write_fd(-1),
     _read_fd(-1),
+    _read_fd_log_num(0),
     _read_offset(0),
     _write_offset(0),
     _initialised(false),
@@ -47,15 +56,15 @@ DataFlash_File::DataFlash_File(const char *log_directory) :
 #if defined(CONFIG_ARCH_BOARD_PX4FMU_V1)
     // V1 gets IO errors with larger than 512 byte writes
     _writebuf_chunk(512),
-#elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V40)
-    _writebuf_chunk(512),
 #elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V45)
-    _writebuf_chunk(512),
-#elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V50)
     _writebuf_chunk(512),
 #elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V51)
     _writebuf_chunk(512),
+#elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V52)
+    _writebuf_chunk(512),
 #elif defined(CONFIG_ARCH_BOARD_VRUBRAIN_V51)
+    _writebuf_chunk(512),
+#elif defined(CONFIG_ARCH_BOARD_VRUBRAIN_V52)
     _writebuf_chunk(512),
 #elif defined(CONFIG_ARCH_BOARD_VRHERO_V10)
     _writebuf_chunk(512),
@@ -68,7 +77,8 @@ DataFlash_File::DataFlash_File(const char *log_directory) :
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
     ,_perf_write(perf_alloc(PC_ELAPSED, "DF_write")),
     _perf_fsync(perf_alloc(PC_ELAPSED, "DF_fsync")),
-    _perf_errors(perf_alloc(PC_COUNT, "DF_errors"))
+    _perf_errors(perf_alloc(PC_COUNT, "DF_errors")),
+    _perf_overruns(perf_alloc(PC_COUNT, "DF_overruns"))
 #endif
 {}
 
@@ -76,7 +86,7 @@ DataFlash_File::DataFlash_File(const char *log_directory) :
 // initialisation
 void DataFlash_File::Init(const struct LogStructure *structure, uint8_t num_types)
 {
-    DataFlash_Class::Init(structure, num_types);
+    DataFlash_Backend::Init(structure, num_types);
     // create the log directory if need be
     int ret;
     struct stat st;
@@ -96,16 +106,22 @@ void DataFlash_File::Init(const struct LogStructure *structure, uint8_t num_type
     }
 #endif
 
+    const char* custom_dir = hal.util->get_custom_log_directory();
+    if (custom_dir != NULL){
+        _log_directory = custom_dir;
+    }
+
     ret = stat(_log_directory, &st);
     if (ret == -1) {
         ret = mkdir(_log_directory, 0777);
     }
     if (ret == -1) {
-        hal.console->printf("Failed to create log directory %s", _log_directory);
+        hal.console->printf("Failed to create log directory %s\n", _log_directory);
         return;
     }
     if (_writebuf != NULL) {
         free(_writebuf);
+        _writebuf = NULL;
     }
 
     /*
@@ -124,7 +140,18 @@ void DataFlash_File::Init(const struct LogStructure *structure, uint8_t num_type
     }
     _writebuf_head = _writebuf_tail = 0;
     _initialised = true;
-    hal.scheduler->register_io_process(AP_HAL_MEMBERPROC(&DataFlash_File::_io_timer));
+    hal.scheduler->register_io_process(FUNCTOR_BIND_MEMBER(&DataFlash_File::_io_timer, void));
+}
+
+void DataFlash_File::periodic_fullrate(const uint32_t now)
+{
+    DataFlash_Backend::push_log_blocks();
+}
+
+uint16_t DataFlash_File::bufferspace_available()
+{
+    uint16_t _head;
+    return (BUF_SPACE(_writebuf)) - critical_message_reserved_space();
 }
 
 // return true for CardInserted() if we successfully initialised
@@ -133,11 +160,135 @@ bool DataFlash_File::CardInserted(void)
     return _initialised && !_open_error;
 }
 
-
-// erase handling
-bool DataFlash_File::NeedErase(void)
+uint64_t DataFlash_File::disk_space_avail()
 {
-    // we could add a format marker at the start of a file?
+    struct statfs stats;
+    if (statfs(_log_directory, &stats) < 0) {
+        return -1;
+    }
+    return (((uint64_t)stats.f_bavail) * stats.f_bsize);
+}
+
+uint64_t DataFlash_File::disk_space()
+{
+    struct statfs stats;
+    if (statfs(_log_directory, &stats) < 0) {
+        return -1;
+    }
+    return (((uint64_t)stats.f_blocks) * stats.f_bsize);
+}
+
+float DataFlash_File::avail_space_percent()
+{
+    uint64_t avail = disk_space_avail();
+    uint64_t space = disk_space();
+
+    return (avail/(float)space) * 100;
+}
+
+// find_first_log - find lowest-numbered log in _log_directory
+// returns 0 if no log was found
+uint16_t DataFlash_File::find_first_log(void)
+{
+    // iterate through directory entries to find lowest log number.
+    // We could count up to find_last_log(), but if people start
+    // relying on the min_avail_space_percent feature we could end up
+    // doing a *lot* of asprintf()s and stat()s
+    DIR *d = opendir(_log_directory);
+    if (d == NULL) {
+        // internal_error();
+        return 0;
+    }
+
+    // we only remove files which look like xxx.BIN
+    uint32_t lowest_number = (uint32_t)-1; // unsigned integer wrap
+    for (struct dirent *de=readdir(d); de; de=readdir(d)) {
+        uint8_t length = strlen(de->d_name);
+        if (length < 5) {
+            // not long enough for \d+[.]BIN
+            continue;
+        }
+        if (strncmp(&de->d_name[length-4], ".BIN", 4)) {
+            // doesn't end in .BIN
+            continue;
+        }
+
+        uint16_t thisnum = strtoul(de->d_name, NULL, 10);
+        if (thisnum < lowest_number) {
+            lowest_number = thisnum;
+        }
+    }
+    closedir(d);
+
+    if (lowest_number == (uint32_t)-1) {
+        return 0;
+    }
+    return lowest_number;
+}
+
+void DataFlash_File::Prep_MinSpace()
+{
+    uint16_t log_to_remove = find_first_log();
+    if (log_to_remove == 0) {
+        // no files to remove
+        return;
+    }
+    uint16_t count = 0;
+    while (avail_space_percent() < min_avail_space_percent) {
+        if (count++ > 500) {
+            // *way* too many deletions going on here.  Possible internal error.
+            // deletion rate seems to be ~50 files/second.
+            // internal_error();
+            break;
+        }
+        char *filename_to_remove = _log_file_name(log_to_remove);
+        if (filename_to_remove == NULL) {
+            // internal_error();
+            break;
+        }
+        hal.console->printf("Removing (%s) for minimum-space requirements\n",
+                              filename_to_remove);
+        if (unlink(filename_to_remove) == -1) {
+            hal.console->printf("Failed to remove %s: (%d/%d) %s\n", filename_to_remove, errno, ENOENT, strerror(errno));
+            free(filename_to_remove);
+            if (errno == ENOENT) {
+                log_to_remove = find_first_log();
+                if (log_to_remove == 0) {
+                    // out of files to remove...
+                    break;
+                }
+                // corruption - should always have a continuous
+                // sequence of files...  however, we now have a file
+                // we can delete, so keep going.
+            } else {
+                break;
+            }
+        } else {
+            free(filename_to_remove);
+            log_to_remove++;
+        }
+    }
+}
+
+void DataFlash_File::Prep() {
+    if (hal.util->get_soft_armed()) {
+        // do not want to do any filesystem operations while we are e.g. flying
+        return;
+    }
+    Prep_MinSpace();
+}
+
+bool DataFlash_File::NeedPrep()
+{
+    if (!CardInserted()) {
+        // should not have been called?!
+        return false;
+    }
+
+    if (avail_space_percent() < min_avail_space_percent) {
+        return true;
+    }
+
     return false;
 }
 
@@ -148,7 +299,9 @@ bool DataFlash_File::NeedErase(void)
 char *DataFlash_File::_log_file_name(uint16_t log_num)
 {
     char *buf = NULL;
-    asprintf(&buf, "%s/%u.BIN", _log_directory, (unsigned)log_num);
+    if (asprintf(&buf, "%s/%u.BIN", _log_directory, (unsigned)log_num) == 0) {
+        return NULL;
+    }
     return buf;
 }
 
@@ -159,7 +312,9 @@ char *DataFlash_File::_log_file_name(uint16_t log_num)
 char *DataFlash_File::_lastlog_file_name(void)
 {
     char *buf = NULL;
-    asprintf(&buf, "%s/LASTLOG.TXT", _log_directory);
+    if (asprintf(&buf, "%s/LASTLOG.TXT", _log_directory) == 0) {
+        return NULL;
+    }
     return buf;
 }
 
@@ -185,16 +340,43 @@ void DataFlash_File::EraseAll()
 }
 
 /* Write a block of data at current offset */
-void DataFlash_File::WriteBlock(const void *pBuffer, uint16_t size)
+bool DataFlash_File::WritePrioritisedBlock(const void *pBuffer, uint16_t size, bool is_critical)
 {
     if (_write_fd == -1 || !_initialised || _open_error || !_writes_enabled) {
-        return;
+        return false;
     }
+
+    if (! WriteBlockCheckStartupMessages()) {
+        _dropped++;
+        return false;
+    }
+
     uint16_t _head;
     uint16_t space = BUF_SPACE(_writebuf);
+
+    if (_writing_startup_messages &&
+        _front._startup_messagewriter.fmt_done()) {
+        // the state machine has called us, and it has finished
+        // writing format messages out.  It can always get back to us
+        // with more messages later, so let's leave room for other
+        // things:
+        if (space < non_messagewriter_message_reserved_space()) {
+            // this message isn't dropped, it will be sent again...
+            return false;
+        }
+    } else {
+        // we reserve some amount of space for critical messages:
+        if (!is_critical && space < critical_message_reserved_space()) {
+            _dropped++;
+            return false;
+        }
+    }
+
+    // if no room for entire message - drop it:
     if (space < size) {
-        // discard the whole write, to keep the log consistent
-        return;
+        perf_count(_perf_overruns);
+        _dropped++;
+        return false;
     }
 
     if (_writebuf_tail < _head) {
@@ -217,20 +399,24 @@ void DataFlash_File::WriteBlock(const void *pBuffer, uint16_t size)
             BUF_ADVANCETAIL(_writebuf, n);
         }
     }
+    return true;
 }
 
 /*
   read a packet. The header bytes have already been read.
 */
-void DataFlash_File::ReadBlock(void *pkt, uint16_t size)
+bool DataFlash_File::ReadBlock(void *pkt, uint16_t size)
 {
     if (_read_fd == -1 || !_initialised || _open_error) {
-        return;
+        return false;
     }
 
     memset(pkt, 0, size);
-    ::read(_read_fd, pkt, size);
+    if (::read(_read_fd, pkt, size) != size) {
+        return false;
+    }
     _read_offset += size;
+    return true;
 }
 
 
@@ -258,6 +444,18 @@ uint16_t DataFlash_File::find_last_log(void)
     return ret;
 }
 
+bool DataFlash_File::_log_exists(uint16_t log_num)
+{
+    char *fname = _log_file_name(log_num);
+    if (fname == NULL) {
+        return 0;
+    }
+    struct stat st;
+    // stat return 0 if the file exists:
+    bool ret = ::stat(fname, &st) ? false : true;
+    free(fname);
+    return ret;
+}
 
 uint32_t DataFlash_File::_get_log_size(uint16_t log_num)
 {
@@ -379,7 +577,7 @@ uint16_t DataFlash_File::get_num_logs(void)
     uint16_t ret;
     uint16_t high = find_last_log();
     for (ret=0; ret<high; ret++) {
-        if (_get_log_size(high - ret) <= 0) {
+        if (!_log_exists(high - ret)) {
             break;
         }
     }
@@ -460,7 +658,7 @@ uint16_t DataFlash_File::start_new_log(void)
 */
 void DataFlash_File::LogReadProcess(uint16_t log_num,
                                     uint16_t start_page, uint16_t end_page, 
-                                    void (*print_mode)(AP_HAL::BetterStream *port, uint8_t mode),
+                                    print_mode_fn print_mode,
                                     AP_HAL::BetterStream *port)
 {
     uint8_t log_step = 0;
@@ -571,7 +769,6 @@ void DataFlash_File::ListAvailableLogs(AP_HAL::BetterStream *port)
         char *filename = _log_file_name(log_num);
         if (filename != NULL) {
             size = _get_log_size(log_num);
-            if (size != 0) {
                 struct stat st;
                 if (stat(filename, &st) == 0) {
                     struct tm *tm = gmtime(&st.st_mtime);
@@ -585,13 +782,31 @@ void DataFlash_File::ListAvailableLogs(AP_HAL::BetterStream *port)
                                    (unsigned)tm->tm_hour,
                                    (unsigned)tm->tm_min);
                 }
-            }
             free(filename);
         }
     }
     port->println();    
 }
 
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL || CONFIG_HAL_BOARD == HAL_BOARD_LINUX
+void DataFlash_File::flush(void)
+{
+    uint16_t _tail;
+    uint32_t tnow = hal.scheduler->micros();
+    hal.scheduler->suspend_timer_procs();
+    while (_write_fd != -1 && _initialised && !_open_error &&
+           BUF_AVAILABLE(_writebuf)) {
+        // convince the IO timer that it really is OK to write out
+        // less than _writebuf_chunk bytes:
+        _last_write_time = tnow - 2000000;
+        _io_timer();
+    }
+    hal.scheduler->resume_timer_procs();
+    if (_write_fd != -1) {
+        ::fsync(_write_fd);
+    }
+}
+#endif
 
 void DataFlash_File::_io_timer(void)
 {
@@ -607,8 +822,8 @@ void DataFlash_File::_io_timer(void)
     uint32_t tnow = hal.scheduler->micros();
     if (nbytes < _writebuf_chunk && 
         tnow - _last_write_time < 2000000UL) {
-        // write in 512 byte chunks, but always write at least once
-        // per 2 seconds if data is available
+        // write in _writebuf_chunk-sized chunks, but always write at
+        // least once per 2 seconds if data is available
         return;
     }
 
@@ -648,10 +863,10 @@ void DataFlash_File::_io_timer(void)
           chunk, ensuring the directory entry is updated after each
           write.
          */
-#if CONFIG_HAL_BOARD != HAL_BOARD_AVR_SITL
+        BUF_ADVANCEHEAD(_writebuf, nwritten);
+#if CONFIG_HAL_BOARD != HAL_BOARD_SITL && CONFIG_HAL_BOARD_SUBTYPE != HAL_BOARD_SUBTYPE_LINUX_NONE
         ::fsync(_write_fd);
 #endif
-        BUF_ADVANCEHEAD(_writebuf, nwritten);
     }
     perf_end(_perf_write);
 }

@@ -28,10 +28,10 @@ Datasheets:
   L3G4200D gyro http://www.st.com/st-web-ui/static/active/en/resource/technical/document/datasheet/CD00265057.pdf
 */
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 
-#include <AP_Math.h>
+#include <AP_Math/AP_Math.h>
 #include "AP_InertialSensor_L3G4200D.h"
 #include <stdio.h>
 #include <unistd.h>
@@ -44,6 +44,7 @@ Datasheets:
 #include <math.h>
 #include <sched.h>
 #include <linux/rtc.h>
+#include <pthread.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -113,20 +114,40 @@ const extern AP_HAL::HAL& hal;
 // constructor
 AP_InertialSensor_L3G4200D::AP_InertialSensor_L3G4200D(AP_InertialSensor &imu) :
     AP_InertialSensor_Backend(imu),
+    _data_idx(0),
     _have_gyro_sample(false),
     _have_accel_sample(false),
-    _accel_filter_x(800, 10),
-    _accel_filter_y(800, 10),
-    _accel_filter_z(800, 10),
-    _gyro_filter_x(800, 10),
-    _gyro_filter_y(800, 10),
-    _gyro_filter_z(800, 10)
-{}
+    _have_sample(false),
+    _accel_filter(800, 10),
+    _gyro_filter(800, 10)
+{
+    pthread_spin_init(&_data_lock, PTHREAD_PROCESS_PRIVATE);
+}
+
+AP_InertialSensor_L3G4200D::~AP_InertialSensor_L3G4200D()
+{
+    pthread_spin_destroy(&_data_lock);
+}
+
+/*
+  detect the sensor
+ */
+AP_InertialSensor_Backend *AP_InertialSensor_L3G4200D::detect(AP_InertialSensor &_imu)
+{
+    AP_InertialSensor_L3G4200D *sensor = new AP_InertialSensor_L3G4200D(_imu);
+    if (sensor == NULL) {
+        return NULL;
+    }
+    if (!sensor->_init_sensor()) {
+        delete sensor;
+        return NULL;
+    }
+
+    return sensor;
+}
 
 bool AP_InertialSensor_L3G4200D::_init_sensor(void) 
 {
-    _default_filter_hz = _default_filter();
-
     // get pointer to i2c bus semaphore
     AP_HAL::Semaphore* i2c_sem = hal.i2c->get_semaphore();
 
@@ -211,13 +232,13 @@ bool AP_InertialSensor_L3G4200D::_init_sensor(void)
                            
 
     // Set up the filter desired
-    _set_filter_frequency(_imu.get_filter());
+    _set_filter_frequency(_accel_filter_cutoff());
 
     // give back i2c semaphore
     i2c_sem->give();
 
     // start the timer process to read samples
-    hal.scheduler->register_timer_process(AP_HAL_MEMBERPROC(&AP_InertialSensor_L3G4200D::_accumulate));
+    hal.scheduler->register_timer_process(FUNCTOR_BIND_MEMBER(&AP_InertialSensor_L3G4200D::_accumulate, void));
 
     _gyro_instance = _imu.register_gyro();
     _accel_instance = _imu.register_accel();
@@ -232,15 +253,8 @@ bool AP_InertialSensor_L3G4200D::_init_sensor(void)
  */
 void AP_InertialSensor_L3G4200D::_set_filter_frequency(uint8_t filter_hz)
 {
-    if (filter_hz == 0)
-        filter_hz = _default_filter_hz;
-
-    _accel_filter_x.set_cutoff_frequency(800, filter_hz);
-    _accel_filter_y.set_cutoff_frequency(800, filter_hz);
-    _accel_filter_z.set_cutoff_frequency(800, filter_hz);
-    _gyro_filter_x.set_cutoff_frequency(800, filter_hz);
-    _gyro_filter_y.set_cutoff_frequency(800, filter_hz);
-    _gyro_filter_z.set_cutoff_frequency(800, filter_hz);
+    _accel_filter.set_cutoff_frequency(800, filter_hz);
+    _gyro_filter.set_cutoff_frequency(800, filter_hz);
 }
 
 /*
@@ -250,24 +264,19 @@ bool AP_InertialSensor_L3G4200D::update(void)
 {
     Vector3f accel, gyro;
 
-    hal.scheduler->suspend_timer_procs();
-    accel = _accel_filtered;
-    gyro = _gyro_filtered;
-    _have_gyro_sample = false;
-    _have_accel_sample = false;
-    hal.scheduler->resume_timer_procs();
+    pthread_spin_lock(&_data_lock);
+    unsigned int idx = !_data_idx;
+    accel = _data[idx].accel_filtered;
+    gyro = _data[idx].gyro_filtered;
+    _have_sample = false;
+    pthread_spin_unlock(&_data_lock);
 
-    // Adjust for chip scaling to get m/s/s
-    accel *= ADXL345_ACCELEROMETER_SCALE_M_S;
-    _rotate_and_offset_accel(_accel_instance, accel);
+    _publish_accel(_accel_instance, accel);
+    _publish_gyro(_gyro_instance, gyro);
 
-    // Adjust for chip scaling to get radians/sec
-    gyro *= L3G4200D_GYRO_SCALE_R_S;
-    _rotate_and_offset_gyro(_gyro_instance, gyro);
-
-    if (_last_filter_hz != _imu.get_filter()) {
-        _set_filter_frequency(_imu.get_filter());
-        _last_filter_hz = _imu.get_filter();
+    if (_last_filter_hz != _accel_filter_cutoff()) {
+        _set_filter_frequency(_accel_filter_cutoff());
+        _last_filter_hz = _accel_filter_cutoff();
     }
 
     return true;
@@ -308,9 +317,11 @@ void AP_InertialSensor_L3G4200D::_accumulate(void)
         if (hal.i2c->readRegisters(L3G4200D_I2C_ADDRESS, L3G4200D_REG_XL | L3G4200D_REG_AUTO_INCREMENT, 
                                    sizeof(buffer), (uint8_t *)&buffer[0][0]) == 0) {
             for (uint8_t i=0; i<num_samples_available; i++) {
-                _gyro_filtered = Vector3f(_gyro_filter_x.apply(buffer[i][0]), 
-                                          _gyro_filter_y.apply(-buffer[i][1]), 
-                                          _gyro_filter_z.apply(-buffer[i][2]));
+                Vector3f gyro = Vector3f(buffer[i][0], -buffer[i][1], -buffer[i][2]);
+                // Adjust for chip scaling to get radians/sec
+                gyro *= L3G4200D_GYRO_SCALE_R_S;
+                _rotate_and_correct_gyro(_gyro_instance, gyro);
+                _data[_data_idx].gyro_filtered = _gyro_filter.apply(gyro);
                 _have_gyro_sample = true;
             }
         }
@@ -330,9 +341,12 @@ void AP_InertialSensor_L3G4200D::_accumulate(void)
                                            sizeof(buffer[0]), num_samples_available,
                                            (uint8_t *)&buffer[0][0]) == 0) {
             for (uint8_t i=0; i<num_samples_available; i++) {
-                _accel_filtered = Vector3f(_accel_filter_x.apply(buffer[i][0]),
-                                           _accel_filter_y.apply(-buffer[i][1]),
-                                           _accel_filter_z.apply(-buffer[i][2]));
+                Vector3f accel = Vector3f(buffer[i][0], -buffer[i][1], -buffer[i][2]);
+                // Adjust for chip scaling to get m/s/s
+                accel *= ADXL345_ACCELEROMETER_SCALE_M_S;
+                _rotate_and_correct_accel(_accel_instance, accel);
+                _notify_new_accel_raw_sample(_accel_instance, accel);
+                _data[_data_idx].accel_filtered = _accel_filter.apply(accel);
                 _have_accel_sample = true;
             }
         }
@@ -340,6 +354,16 @@ void AP_InertialSensor_L3G4200D::_accumulate(void)
 
     // give back i2c semaphore
     i2c_sem->give();
+
+    if (_have_accel_sample && _have_gyro_sample) {
+        _have_gyro_sample = false;
+        _have_accel_sample = false;
+
+        pthread_spin_lock(&_data_lock);
+        _data_idx = !_data_idx;
+        _have_sample = true;
+        pthread_spin_unlock(&_data_lock);
+    }
 }
 
 #endif // CONFIG_HAL_BOARD

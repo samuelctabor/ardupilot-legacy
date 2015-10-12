@@ -3,16 +3,16 @@
 #ifndef __AP_BARO_H__
 #define __AP_BARO_H__
 
-#include <AP_HAL.h>
-#include <AP_Param.h>
-#include <Filter.h>
-#include <DerivativeFilter.h>
+#include <AP_HAL/AP_HAL.h>
+#include <AP_Param/AP_Param.h>
+#include <Filter/Filter.h>
+#include <Filter/DerivativeFilter.h>
 
 // maximum number of sensor instances
 #if HAL_CPU_CLASS == HAL_CPU_CLASS_16
 #define BARO_MAX_INSTANCES 1
 #else
-#define BARO_MAX_INSTANCES 2
+#define BARO_MAX_INSTANCES 3
 #endif
 
 // maximum number of drivers. Note that a single driver can provide
@@ -78,6 +78,9 @@ public:
 
     // get scale factor required to convert equivalent to true airspeed
     float get_EAS2TAS(void);
+
+    // get air density / sea level density - decreases as altitude climbs
+    float get_air_density_ratio(void);
 
     // get current climb rate in meters/s. A positive number means
     // going up
@@ -147,7 +150,8 @@ private:
         AP_Float ground_pressure;
     } sensors[BARO_MAX_INSTANCES];
 
-    AP_Int8                             _alt_offset;
+    AP_Float                            _alt_offset;
+    AP_Int8                             _primary_baro; // primary chosen by user
     float                               _last_altitude_EAS2TAS;
     float                               _EAS2TAS;
     float                               _external_temperature;

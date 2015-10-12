@@ -2,7 +2,7 @@
 #ifndef __AP_HAL_LINUX_SCHEDULER_H__
 #define __AP_HAL_LINUX_SCHEDULER_H__
 
-#include <AP_HAL_Linux.h>
+#include "AP_HAL_Linux.h"
 #include "Semaphores.h"
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
@@ -10,8 +10,12 @@
 #include <pthread.h>
 
 #define LINUX_SCHEDULER_MAX_TIMER_PROCS 10
+#define LINUX_SCHEDULER_MAX_IO_PROCS 10
 
 class Linux::LinuxScheduler : public AP_HAL::Scheduler {
+
+typedef void *(*pthread_startroutine_t)(void *);
+
 public:
     LinuxScheduler();
     void     init(void* machtnichts);
@@ -39,7 +43,7 @@ public:
     bool     system_initializing();
     void     system_initialized();
 
-    void     panic(const prog_char_t *errormsg);
+    void     panic(const prog_char_t *errormsg) NORETURN;
     void     reboot(bool hold_in_bootloader);
 
     void     stop_clock(uint64_t time_usec);
@@ -61,7 +65,7 @@ private:
     uint8_t _num_timer_procs;
     volatile bool _in_timer_proc;
 
-    AP_HAL::MemberProc _io_proc[LINUX_SCHEDULER_MAX_TIMER_PROCS];
+    AP_HAL::MemberProc _io_proc[LINUX_SCHEDULER_MAX_IO_PROCS];
     uint8_t _num_io_procs;
     volatile bool _in_io_proc;
 
@@ -73,15 +77,16 @@ private:
     pthread_t _uart_thread_ctx;
     pthread_t _tonealarm_thread_ctx;
 
-    void *_timer_thread(void);
-    void *_io_thread(void);
-    void *_rcin_thread(void);
-    void *_uart_thread(void);
-    void *_tonealarm_thread(void);
+    static void *_timer_thread(void* arg);
+    static void *_io_thread(void* arg);
+    static void *_rcin_thread(void* arg);
+    static void *_uart_thread(void* arg);
+    static void *_tonealarm_thread(void* arg);
 
     void _run_timers(bool called_from_timer_thread);
     void _run_io(void);
-    void _setup_realtime(uint32_t size);
+    void _create_realtime_thread(pthread_t *ctx, int rtprio, const char *name,
+                                 pthread_startroutine_t start_routine);
 
     uint64_t stopped_clock_usec;
 

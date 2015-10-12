@@ -1,18 +1,20 @@
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 
 #include <stdlib.h>
 #include <cstdio>
 #include "SPIUARTDriver.h"
-#include "../AP_HAL/utility/RingBuffer.h"
+#include <AP_HAL/utility/RingBuffer.h>
 
 extern const AP_HAL::HAL& hal;
 
-#define SPIUART_DEBUG 1
-#if SPIUART_DEBUG
+#define SPIUART_DEBUG 0
+
 #include <cassert>
-#define debug(fmt, args ...)  do {hal.console->printf("%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); } while(0)
+
+#if SPIUART_DEBUG
+#define debug(fmt, args ...)  do {hal.console->printf("[SPIUARTDriver]: %s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); } while(0)
 #define error(fmt, args ...)  do {fprintf(stderr,"%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); } while(0)
 #else
 #define debug(fmt, args ...)  
@@ -86,17 +88,44 @@ void LinuxSPIUARTDriver::begin(uint32_t b, uint16_t rxS, uint16_t txS)
        _writebuf_tail = 0;
    }
 
-   _buffer = new uint8_t[rxS];
+   if (_buffer == NULL) {
+       /* Do not allocate new buffer, if we're just changing speed */
+       _buffer = new uint8_t[rxS];
+       if (_buffer == NULL) {
+           hal.console->printf("Not enough memory\n");
+           hal.scheduler->panic("Not enough memory\n");
+       }
+   }
 
    _spi = hal.spi->device(AP_HAL::SPIDevice_Ublox);
 
    if (_spi == NULL) {
-       hal.scheduler->panic("Cannot get SPIDevice_MPU9250");
+       hal.scheduler->panic("Cannot get SPIDevice_Ublox");
    }
 
    _spi_sem = _spi->get_semaphore();
 
-   _spi->set_bus_speed(AP_HAL::SPIDeviceDriver::SPI_SPEED_HIGH);
+   switch (b) {
+       case 4000000U:
+           if (is_initialized()) {
+               /* Do not allow speed changes before device is initialized, because
+                * it can lead to misconfiguraration. Once the device is initialized,
+                * it's sage to update speed
+                */
+               _spi->set_bus_speed(AP_HAL::SPIDeviceDriver::SPI_SPEED_HIGH);
+               debug("Set higher SPI-frequency");
+           } else {
+               _spi->set_bus_speed(AP_HAL::SPIDeviceDriver::SPI_SPEED_LOW);
+               debug("Set lower SPI-frequency");
+           }
+           break;
+       default:
+           _spi->set_bus_speed(AP_HAL::SPIDeviceDriver::SPI_SPEED_LOW);
+           debug("Set lower SPI-frequency");
+           debug("%s: wrong baudrate (%u) for SPI-driven device. setting default speed", __func__, b);
+           break;
+   }
+   
    _initialised = true;
 }
 
@@ -111,6 +140,8 @@ int LinuxSPIUARTDriver::_write_fd(const uint8_t *buf, uint16_t size)
     }
 
     _spi->transaction(buf, _buffer, size);
+
+    sem_give();
 
     BUF_ADVANCEHEAD(_writebuf, size);
 
@@ -128,7 +159,6 @@ int LinuxSPIUARTDriver::_write_fd(const uint8_t *buf, uint16_t size)
     space = BUF_SPACE(_readbuf);
 
     if (space == 0) {
-        sem_give();
         return ret;
     }
 
@@ -141,7 +171,6 @@ int LinuxSPIUARTDriver::_write_fd(const uint8_t *buf, uint16_t size)
         assert(_readbuf_tail+size <= _readbuf_size);
         memcpy(&_readbuf[_readbuf_tail], buffer, size);
         BUF_ADVANCETAIL(_readbuf, size);
-        sem_give();
         return ret;
     }
 
@@ -159,13 +188,12 @@ int LinuxSPIUARTDriver::_write_fd(const uint8_t *buf, uint16_t size)
         BUF_ADVANCETAIL(_readbuf, n);
     }
 
-    sem_give();
 
     return ret;
     
 }
 
-static const uint8_t ff_stub[3000] = {0xff};
+static const uint8_t ff_stub[300] = {0xff};
 int LinuxSPIUARTDriver::_read_fd(uint8_t *buf, uint16_t n)
 {
     if (_external) {
@@ -176,11 +204,22 @@ int LinuxSPIUARTDriver::_read_fd(uint8_t *buf, uint16_t n)
         return 0;
     }
 
+    /* Make SPI transactions shorter. It can save SPI bus from keeping too
+     * long. It's essential for NavIO as MPU9250 is on the same bus and 
+     * doesn't like to be waiting. Making transactions more frequent but shorter
+     * is a win.
+     */  
+
+    if (n > 100) {
+        n = 100;
+    }
+
     _spi->transaction(ff_stub, buf, n);
+
+    sem_give();
 
     BUF_ADVANCETAIL(_readbuf, n);
 
-    sem_give();
     return n;
 }
 
@@ -191,7 +230,7 @@ void LinuxSPIUARTDriver::_timer_tick(void)
         return;
     }
     /* lower the update rate */
-    if (hal.scheduler->micros() - _last_update_timestamp < 50000) {
+    if (hal.scheduler->micros() - _last_update_timestamp < 10000) {
         return;
     }
 

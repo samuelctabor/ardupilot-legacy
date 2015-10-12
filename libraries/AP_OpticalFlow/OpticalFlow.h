@@ -20,8 +20,8 @@
  *       Code by Randy Mackay. DIYDrones.com
  */
 
-#include <AP_HAL.h>
-#include <AP_Math.h>
+#include <AP_HAL/AP_HAL.h>
+#include <AP_Math/AP_Math.h>
 
 class OpticalFlow_backend;
 
@@ -84,6 +84,7 @@ private:
     AP_Int8  _enabled;              // enabled/disabled flag
     AP_Int16 _flowScalerX;          // X axis flow scale factor correction - parts per thousand
     AP_Int16 _flowScalerY;          // Y axis flow scale factor correction - parts per thousand
+    AP_Int16 _yawAngle_cd;          // yaw angle of sensor X axis with respect to vehicle X axis - centi degrees
 
 
     // state filled in by backend
@@ -95,5 +96,6 @@ private:
 #include "OpticalFlow_backend.h"
 #include "AP_OpticalFlow_HIL.h"
 #include "AP_OpticalFlow_PX4.h"
+#include "AP_OpticalFlow_Linux.h"
 
 #endif

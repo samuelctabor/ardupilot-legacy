@@ -3,13 +3,13 @@
 #ifndef __AP_INERTIAL_SENSOR_MPU9150_H__
 #define __AP_INERTIAL_SENSOR_MPU9150_H__
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 
-#include <AP_Progmem.h>
+#include <AP_Progmem/AP_Progmem.h>
 #include "AP_InertialSensor.h"
-#include <Filter.h>
-#include <LowPassFilter2p.h>
+#include <Filter/Filter.h>
+#include <Filter/LowPassFilter2p.h>
 
 
 class AP_InertialSensor_MPU9150 : public AP_InertialSensor_Backend
@@ -34,8 +34,8 @@ private:
     bool            _have_sample_available;
 
     // // support for updating filter at runtime
-    uint8_t         _last_filter_hz;
-    uint8_t         _default_filter_hz;
+    uint8_t         _last_accel_filter_hz;
+    uint8_t         _last_gyro_filter_hz;
 
     int16_t mpu_set_gyro_fsr(uint16_t fsr);
     int16_t mpu_set_accel_fsr(uint8_t fsr);
@@ -47,17 +47,14 @@ private:
     int16_t mpu_reset_fifo(uint8_t sensors);
     int16_t mpu_set_sensors(uint8_t sensors);
     int16_t mpu_set_int_latched(uint8_t enable);
-    int16_t mpu_read_fifo(int16_t *gyro, int16_t *accel, uint32_t timestamp, uint8_t *sensors, uint8_t *more);
+    int16_t mpu_read_fifo(int16_t *gyro, int16_t *accel, uint32_t *timestamp, uint8_t *sensors, uint8_t *more);
 
-    void _set_filter_frequency(uint8_t filter_hz);
+    void _set_accel_filter_frequency(uint8_t filter_hz);
+    void _set_gyro_filter_frequency(uint8_t filter_hz);
 
     // Low Pass filters for gyro and accel 
-    LowPassFilter2p _accel_filter_x;
-    LowPassFilter2p _accel_filter_y;
-    LowPassFilter2p _accel_filter_z;
-    LowPassFilter2p _gyro_filter_x;
-    LowPassFilter2p _gyro_filter_y;
-    LowPassFilter2p _gyro_filter_z;
+    LowPassFilter2pVector3f _accel_filter;
+    LowPassFilter2pVector3f _gyro_filter;
 
     uint8_t _gyro_instance;
     uint8_t _accel_instance;

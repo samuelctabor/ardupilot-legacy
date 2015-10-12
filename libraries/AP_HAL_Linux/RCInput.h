@@ -2,7 +2,7 @@
 #ifndef __AP_HAL_LINUX_RCINPUT_H__
 #define __AP_HAL_LINUX_RCINPUT_H__
 
-#include <AP_HAL_Linux.h>
+#include "AP_HAL_Linux.h"
 
 #define LINUX_RC_INPUT_NUM_CHANNELS 16
 
@@ -25,6 +25,7 @@ public:
 
  protected:
     void _process_rc_pulse(uint16_t width_s0, uint16_t width_s1);
+    void _update_periods(uint16_t *periods, uint8_t len);
 
  private:
     volatile bool new_rc_input;

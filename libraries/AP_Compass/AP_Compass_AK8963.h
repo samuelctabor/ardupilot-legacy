@@ -2,114 +2,126 @@
 #ifndef AP_Compass_AK8963_H
 #define AP_Compass_AK8963_H
 
-#include <AP_HAL.h>
-#include "../AP_Common/AP_Common.h"
-#include "../AP_Math/AP_Math.h"
+#include <AP_HAL/AP_HAL.h>
+#include <AP_Common/AP_Common.h>
+#include <AP_Math/AP_Math.h>
 
 #include "Compass.h"
+#include "AP_Compass_Backend.h"
 
-class AK8963_Backend
+class AP_AK8963_SerialBus
 {
-    public:
-        virtual void read(uint8_t address, uint8_t *buf, uint32_t count) = 0;
-        virtual void write(uint8_t address, const uint8_t *buf, uint32_t count) = 0;
-        virtual bool sem_take_nonblocking() = 0;
-        virtual bool sem_take_blocking() = 0;
-        virtual bool sem_give() = 0;
-        virtual uint8_t read(uint8_t address) 
-        {
-            uint8_t value;
-            read(address, &value, 1);
-            return value;
-        }
+public:
+    struct PACKED raw_value {
+        int16_t val[3];
+        uint8_t st2;
+    };
 
-        virtual void write(uint8_t address, uint8_t value)
-        {
-            write(address, &value, 1);
-        }
+    virtual ~AP_AK8963_SerialBus() { }
+    virtual void register_read(uint8_t address, uint8_t *value, uint8_t count) = 0;
+    uint8_t register_read(uint8_t address) {
+        uint8_t reg;
+        register_read(address, &reg, 1);
+        return reg;
+    }
+    virtual void register_write(uint8_t address, uint8_t value) = 0;
+    virtual AP_HAL::Semaphore* get_semaphore() = 0;
+    virtual bool configure() = 0;
+    virtual bool start_measurements() = 0;
+    virtual void read_raw(struct raw_value *rv) = 0;
+    virtual uint32_t get_dev_id() = 0;
 };
 
-class AP_Compass_AK8963 : public Compass
+class AP_Compass_AK8963 : public AP_Compass_Backend
 {
+public:
+    static AP_Compass_Backend *detect_mpu9250(Compass &compass);
+    static AP_Compass_Backend *detect_i2c(Compass &compass,
+                                          AP_HAL::I2CDriver *i2c,
+                                          uint8_t addr);
+
+    AP_Compass_AK8963(Compass &compass, AP_AK8963_SerialBus *bus);
+    ~AP_Compass_AK8963();
+
+    bool        init(void);
+    void        read(void);
+    void        accumulate(void);
+
 private:
-    typedef enum 
-    {
-        CONVERSION,
-        SAMPLE,
-        ERROR
-    } state_t;
+    static AP_Compass_Backend *_detect(Compass &compass, AP_AK8963_SerialBus *bus);
 
-    virtual bool        _backend_init() = 0;
-    virtual void        _register_read(uint8_t address, uint8_t count, uint8_t *value) = 0;
-    virtual void        _register_write(uint8_t address, uint8_t value) = 0;
-    virtual void        _backend_reset() = 0;
-    virtual bool        _read_raw() = 0;
-    virtual uint8_t     _read_id() = 0;
-    virtual void        _dump_registers() {}
+    void _make_factory_sensitivity_adjustment(Vector3f& field) const;
+    void _make_adc_sensitivity_adjustment(Vector3f& field) const;
+    Vector3f _get_filtered_field() const;
+    void _reset_filter();
 
-    bool                _register_read(uint8_t address, uint8_t *value);
-    bool                _calibrate();
-    bool                _self_test();
-    void                _update();
-    void                _start_conversion();
-    void                _collect_samples();
+    bool _reset();
+    bool _setup_mode();
+    bool _check_id();
+    bool _calibrate();
+
+    void _update();
+    void _dump_registers();
+    bool _sem_take_blocking();
+    bool _sem_take_nonblocking();
+    bool _sem_give();
+
+    float               _magnetometer_ASA[3] {0, 0, 0};
+    uint8_t             _compass_instance;
 
     float               _mag_x_accum;
     float               _mag_y_accum;
     float               _mag_z_accum;
     uint32_t            _accum_count;
 
-    bool                _initialised;
-    state_t             _state;
-    uint8_t             _magnetometer_adc_resolution;
+    bool                _initialized;
     uint32_t            _last_update_timestamp;
     uint32_t            _last_accum_time;
 
-protected:
-    float               magnetometer_ASA[3];
-    float               _mag_x;
-    float               _mag_y;
-    float               _mag_z;
+    AP_AK8963_SerialBus *_bus = nullptr;
+    AP_HAL::Semaphore *_bus_sem;
+};
 
-    AK8963_Backend      *_backend;
-
+class AP_AK8963_SerialBus_MPU9250: public AP_AK8963_SerialBus
+{
 public:
-    AP_Compass_AK8963();
-
-    virtual bool        init(void);
-    virtual bool        read(void);
-    virtual void        accumulate(void);
-
+    AP_AK8963_SerialBus_MPU9250();
+    void register_read(uint8_t address, uint8_t *value, uint8_t count);
+    void register_write(uint8_t address, uint8_t value);
+    AP_HAL::Semaphore* get_semaphore();
+    bool configure();
+    bool start_measurements();
+    void read_raw(struct raw_value *rv);
+    uint32_t get_dev_id();
+private:
+    void _read(uint8_t address, uint8_t *value, uint32_t count);
+    void _write(uint8_t address, const uint8_t *value,  uint32_t count);
+    void _write(uint8_t address, const uint8_t value) {
+        _write(address, &value, 1);
+    }
+    AP_HAL::SPIDeviceDriver *_spi;
+    AP_HAL::Semaphore *_spi_sem;
 };
 
-class AK8963_MPU9250_SPI_Backend: public AK8963_Backend
+class AP_AK8963_SerialBus_I2C: public AP_AK8963_SerialBus
 {
-    public:
-        AK8963_MPU9250_SPI_Backend();
-        void read(uint8_t address, uint8_t *buf, uint32_t count);
-        void write(uint8_t address, const uint8_t *buf, uint32_t count);
-        bool sem_take_nonblocking();
-        bool sem_take_blocking();
-        bool sem_give();
-
-    private:
-        AP_HAL::SPIDeviceDriver *_spi;
-        AP_HAL::Semaphore *_spi_sem;
+public:
+    AP_AK8963_SerialBus_I2C(AP_HAL::I2CDriver *i2c, uint8_t addr);
+    void register_read(uint8_t address, uint8_t *value, uint8_t count);
+    void register_write(uint8_t address, uint8_t value);
+    AP_HAL::Semaphore* get_semaphore();
+    bool configure(){ return true; }
+    bool start_measurements() { return true; }
+    void read_raw(struct raw_value *rv);
+    uint32_t get_dev_id();
+private:
+    void _read(uint8_t address, uint8_t *value, uint32_t count);
+    void _write(uint8_t address, const uint8_t *value,  uint32_t count);
+    void _write(uint8_t address, const uint8_t value) {
+        _write(address, &value, 1);
+    }
+    AP_HAL::I2CDriver *_i2c;
+    AP_HAL::Semaphore *_i2c_sem;
+    uint8_t _addr;
 };
-
-class AP_Compass_AK8963_MPU9250: public AP_Compass_AK8963
-{
-    public:
-        AP_Compass_AK8963_MPU9250();
-        bool init();
-    private:
-        bool       _backend_init();
-        void       _backend_reset();
-        void       _register_read(uint8_t address, uint8_t count, uint8_t *value);
-        void       _register_write(uint8_t address, uint8_t value);
-        void       _dump_registers();
-        bool       _read_raw();
-        uint8_t    _read_id();
-};
-
 #endif

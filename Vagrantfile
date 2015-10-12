@@ -9,9 +9,6 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.box = "ubuntu/trusty32"
   # push.app = "geeksville/ardupilot-sitl"
 
-  # Allow symlinks - I think this is no longer needed
-  # config.vm.customize ["setextradata", :id, "VBoxInternal2/SharedFoldersEnableSymlinksCreate/cross-compiler", "1"]
-
   # The following forwarding is not necessary (or possible), because our sim_vehicle.sh is smart enough to send packets
   # out to the containing OS
   # config.vm.network "forwarded_port", guest: 14550, host: 14550, protocol: "udp"
@@ -28,7 +25,19 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       vb.customize ["modifyvm", :id, "--memory", "2048"]
       vb.customize ["modifyvm", :id, "--ioapic", "on"]
       vb.customize ["modifyvm", :id, "--cpus", "2"]
+      # Make some effort to avoid clock skew
+      vb.customize ["guestproperty", "set", :id, "/VirtualBox/GuestAdd/VBoxService/--timesync-set-threshold", "5000"]
+      vb.customize ["guestproperty", "set", :id, "/VirtualBox/GuestAdd/VBoxService/--timesync-set-start"]
+      vb.customize ["guestproperty", "set", :id, "/VirtualBox/GuestAdd/VBoxService/--timesync-set-on-restore", "1"]
   end
+
+  # The created VM sets PX4_WINTOOL=y to allow builds to proceed using shared folders with using symlinks.
+  # However shared folders are quite slow. If you have rsync installed then this is a faster way of building.
+  # In addition there are problems with px4-clean when using shared folders. Using rsync avoids this.
+  # config.vm.synced_folder ".", "/vagrant", type: "rsync", rsync__auto: true
+  
+  # If you are on windows then you must use a version of git >= 1.8.x to update the submodules
+  # in order to build. Older versions of git use absolute paths for submodules which confuses things.
 
   config.vm.provision :shell, path: "Tools/vagrant/initvagrant.sh"  
 end

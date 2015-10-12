@@ -88,6 +88,9 @@ report_pull_failure() {
 oldhash=$(cd APM && git rev-parse HEAD)
 
 pushd APM
+git checkout -f master
+git fetch origin
+git reset --hard origin/master
 git pull || report_pull_failure
 git clean -f -f -x -d -d
 git tag autotest-$(date '+%Y-%m-%d-%H%M%S') -m "test tag `date`"
@@ -148,7 +151,7 @@ popd
 githash=$(cd APM && git rev-parse HEAD)
 hdate=$(date +"%Y-%m-%d-%H:%m")
 
-for d in ArduPlane ArduCopter APMrover2; do
+for d in ArduPlane ArduCopter APMrover2 AntennaTracker; do
     pushd APM/$d
     rm -rf ../../buildlogs/$d.build
     (date && TMPDIR=../../buildlogs make) > ../../buildlogs/$d.txt 2>&1
@@ -177,6 +180,6 @@ killall -9 JSBSim || /bin/true
 # raise core limit
 ulimit -c 10000000
 
-timelimit 8500 APM/Tools/autotest/autotest.py --timeout=8000 > buildlogs/autotest-output.txt 2>&1
+timelimit 12000 APM/Tools/autotest/autotest.py --timeout=11500 > buildlogs/autotest-output.txt 2>&1
 
 ) >> build.log 2>&1

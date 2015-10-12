@@ -17,11 +17,11 @@
   handle vehicle <-> GCS communications for terrain library
  */
 
-#include <AP_HAL.h>
-#include <AP_Common.h>
-#include <AP_Math.h>
-#include <GCS_MAVLink.h>
-#include <GCS.h>
+#include <AP_HAL/AP_HAL.h>
+#include <AP_Common/AP_Common.h>
+#include <AP_Math/AP_Math.h>
+#include <GCS_MAVLink/GCS_MAVLink.h>
+#include <GCS_MAVLink/GCS.h>
 #include "AP_Terrain.h"
 
 #if AP_TERRAIN_AVAILABLE
@@ -64,7 +64,7 @@ bool AP_Terrain::request_missing(mavlink_channel_t chan, struct grid_cache &gcac
       ask the GCS to send a set of 4x4 grids
      */
     mavlink_msg_terrain_request_send(chan, grid.lat, grid.lon, grid_spacing, bitmap_mask & ~grid.bitmap);
-    last_request_time_ms = hal.scheduler->millis();
+    last_request_time_ms[chan] = hal.scheduler->millis();
 
     return true;
 }
@@ -102,7 +102,7 @@ void AP_Terrain::send_request(mavlink_channel_t chan)
     send_terrain_report(chan, loc, true);
 
     // did we request recently?
-    if (hal.scheduler->millis() - last_request_time_ms < 2000) {
+    if (hal.scheduler->millis() - last_request_time_ms[chan] < 2000) {
         // too soon to request again
         return;
     }
