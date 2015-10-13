@@ -899,6 +899,7 @@ private:
     void compass_cal_update();
     void barometer_accumulate(void);
     void update_optical_flow(void);
+    void update_soaring();
     void one_second_loop(void);
     void airspeed_ratio_update(void);
     void update_mount(void);

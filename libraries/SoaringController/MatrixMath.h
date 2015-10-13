@@ -8,7 +8,6 @@
 #ifndef MatrixMath_h
 #define MatrixMath_h
 
-#include "Arduino.h"
 #include "math.h"
 
 class MatrixMath

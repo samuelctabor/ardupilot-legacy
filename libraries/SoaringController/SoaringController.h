@@ -5,13 +5,13 @@ Provides a layer between the thermal centring algorithm and the main code for ma
 #ifndef SoaringController_h
 #define SoaringController_h
 
-#include <AP_AHRS.h>
-#include <AP_Param.h>
-#include <DataFlash.h>
-#include "MatrixMath.h"
-#include "AP_Math.h"
-#include "ExtendedKalmanFilter.h"
-#include <AP_SpdHgtControl.h>
+#include <AP_AHRS/AP_AHRS.h>
+#include <AP_Param/AP_Param.h>
+#include <DataFlash/DataFlash.h>
+#include <SoaringController/MatrixMath.h>
+#include <AP_Math/AP_Math.h>
+#include <SoaringController/ExtendedKalmanFilter.h>
+#include <AP_SpdHgtControl/AP_SpdHgtControl.h>
 #define EXPECTED_THERMALLING_SINK 0.7
 #define INITIAL_THERMAL_STRENGTH 2.0
 #define INITIAL_THERMAL_RADIUS 150.0

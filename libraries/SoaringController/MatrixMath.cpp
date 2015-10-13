@@ -6,7 +6,6 @@
  *  MatrixMath.cpp 
  */
 
-#include "Arduino.h"
 #include "MatrixMath.h"
 
 #define NR_END 1

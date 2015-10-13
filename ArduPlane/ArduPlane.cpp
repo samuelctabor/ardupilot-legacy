@@ -914,7 +914,7 @@ void Plane::update_optical_flow(void)
  *  Peter Braswell and Samuel Tabor 
 */
 
-static void update_soaring() {
+void Plane::update_soaring() {
      if (!soaring_controller.is_active()) {
          return;
      }
@@ -976,6 +976,7 @@ static void update_soaring() {
         }
         break;
     }
+    //default: break;
 }
 
 /*
