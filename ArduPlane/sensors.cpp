@@ -49,9 +49,7 @@ void Plane::read_airspeed(void)
 {
 
     if (airspeed.enabled()) {
-      #if HIL_MODE != HIL_MODE_SENSORS
         airspeed.read();
-      #endif
         if (should_log(MASK_LOG_IMU)) {
             Log_Write_Airspeed();
         }
